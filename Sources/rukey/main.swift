@@ -18,6 +18,10 @@ let dictionariesDirectory = URL(fileURLWithPath: positional.first
     ?? FileManager.default.currentDirectoryPath + "/Resources/dict")
     .standardizedFileURL
 
+/// Where the running log lives. In the user's Library, not next to the build: the build
+/// directory is wiped by `swift build` and by `rm -rf .build`.
+let logPath = NSString(string: "~/Library/Logs/rukey.log").expandingTildeInPath
+
 func loadWords(_ language: String) throws -> DictionaryIndex {
     let url = dictionariesDirectory.appendingPathComponent("\(language).txt")
     let text = try String(contentsOf: url, encoding: .utf8)
@@ -91,13 +95,18 @@ func run() {
 
     let switcher = InputSourceSwitcher()
     let detector = Detector(english: english, russian: russian)
-    let corrector = LiveCorrector(detector: detector, switcher: switcher)
+    let log = Log(path: logPath)
+    let corrector = LiveCorrector(detector: detector, switcher: switcher,
+                                  russianLayout: russian.layout, englishLayout: english.layout,
+                                  log: log)
 
     guard corrector.start() else {
         FileHandle.standardError.write(Data("""
             rukey: could not install the event tap. This usually means permission was
             granted to a different build of the app. Check System Settings →
             Privacy & Security → Input Monitoring.
+
+            The full log is at \(logPath).
 
             """.utf8))
         exit(1)

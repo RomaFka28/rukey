@@ -30,9 +30,23 @@ public struct KeyboardEngine {
     /// Records the conversion we just performed, so Delete can take it back.
     public private(set) var lastLayoutBeforeSwitch: Language?
 
-    public init(detector: Detector, switcher: InputSourceSwitcher) {
+    /// The layout tables, so the tap can derive a character from a key code when the event
+    /// carries no Unicode string. Passed in explicitly rather than read back off the
+    /// detector: the fallback must use the same tables the correction is based on, so the
+    /// caller supplies them from the same LanguageTable values that built the detector.
+    public let russianLayout: LayoutTable
+    public let englishLayout: LayoutTable
+
+    public init(
+        detector: Detector,
+        switcher: InputSourceSwitcher,
+        russianLayout: LayoutTable,
+        englishLayout: LayoutTable
+    ) {
         self.detector = detector
         self.switcher = switcher
+        self.russianLayout = russianLayout
+        self.englishLayout = englishLayout
     }
 
     /// What the engine decided to do about one keystroke.

@@ -28,26 +28,32 @@ final class LiveCorrector {
     private let tapLocation: CGEventTapLocation = .cghidEventTap
     private var tap: CFMachPort?
 
-    /// Set by the tap callback; read on the main run loop for the status line.
-    private(set) var lastEventSummary = "waiting for the first keystroke"
+    /// Every keystroke the tap sees, with what was decided about it. Without this, "the tap
+    /// saw nothing" and "the tap saw it and dropped it" look identical from outside the
+    /// process - which is exactly why the first live test produced no information at all.
+    private let log: Log
 
-    init(detector: Detector, switcher: InputSourceSwitcher) {
-        self.engine = KeyboardEngine(detector: detector, switcher: switcher)
+    init(detector: Detector, switcher: InputSourceSwitcher,
+         russianLayout: LayoutTable, englishLayout: LayoutTable, log: Log) {
+        self.engine = KeyboardEngine(detector: detector, switcher: switcher,
+                                     russianLayout: russianLayout, englishLayout: englishLayout)
+        self.log = log
     }
 
     /// Install the tap. Returns false if the process is not trusted for Accessibility, which
     /// is the only reason this can fail.
     func start() -> Bool {
+        // The mask MUST include the two "the system disabled you" types. A tap whose mask
+        // omits them gets disabled without telling anyone, and then the program does nothing
+        // forever with no error anywhere. That failure is indistinguishable from a broken
+        // program, so it is logged explicitly when it happens.
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.tapDisabledByTimeout.rawValue)
+            | CGEventMask(1 << CGEventType.tapDisabledByUserInput.rawValue)
 
         // The callback is a C function pointer, so it cannot capture state. `refcon` is how
         // the corrector gets back in: an unretained pointer, which is safe because `self`
         // outlives the tap - `stop()` in deinit removes it.
-        //
-        // `CGEvent` is not Sendable, so it must not cross the isolation boundary. Only the
-        // type enum does; the event is unpacked inside `MainActor.assumeIsolated`, where it
-        // never leaves the main actor. The assumption is that the callback runs on the run
-        // loop that installed the tap, which is the main run loop in `run()`.
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
             let corrector = Unmanaged<LiveCorrector>.fromOpaque(refcon).takeUnretainedValue()
@@ -83,26 +89,32 @@ final class LiveCorrector {
     /// case: this program never swallows keystrokes, it only edits text around them.
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // The system disables a tap that blocks too long. Re-enable or die silently.
+            // The system disables a tap that blocks too long. Re-enable, and say so - a tap
+            // that is disabled and silent looks exactly like a tap that never works.
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            log.write("TAP DISABLED BY SYSTEM (\(type == .tapDisabledByTimeout ? "timeout" : "user input")) - re-enabled")
             return Unmanaged.passUnretained(event)
         }
 
         if type == .keyDown {
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            let isDelete = keyCode == 51 || keyCode == 117
             let flags = event.flags
+            let isDelete = keyCode == 51 || keyCode == 117
             let isShift = flags.contains(.maskShift)
+            let layout = currentLayout()
 
             // Only the unmodified delete undoes a correction. Shift-delete is a different
             // gesture (delete to end of line in most editors) and must be left alone.
             if isDelete && !isShift {
-                apply(engine.type("\u{8}", layout: currentLayout()))
+                let action = engine.type("\u{8}", layout: layout)
+                log.write("DELETE -> \(describe(action))")
+                apply(action)
                 return Unmanaged.passUnretained(event)
             }
 
             // Ignore our own generated events while an edit is in flight.
             guard !engine.isBusy else {
+                log.write("kc \(keyCode) dropped: busy with our own edit")
                 return Unmanaged.passUnretained(event)
             }
 
@@ -111,18 +123,33 @@ final class LiveCorrector {
             // produce text the user did not ask for.
             guard !flags.contains(.maskCommand), !flags.contains(.maskControl),
                   !flags.contains(.maskAlternate) else {
+                log.write("kc \(keyCode) dropped: modifier held")
                 return Unmanaged.passUnretained(event)
             }
 
-            guard let character = character(from: event, keyCode: keyCode) else {
+            guard let character = character(from: event, keyCode: keyCode, layout: layout) else {
+                log.write("kc \(keyCode) dropped: no character could be derived")
                 return Unmanaged.passUnretained(event)
             }
 
-            apply(engine.type(character, layout: currentLayout()))
+            let action = engine.type(character, layout: layout)
+            log.write("«\(character)» kc \(keyCode) [\(layout.rawValue)] buffer «\(engine.buffer)» -> \(describe(action))")
+            apply(action)
             return Unmanaged.passUnretained(event)
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    private func describe(_ action: KeyboardEngine.Action) -> String {
+        switch action {
+        case .none:
+            return "nothing"
+        case .correct(let original, let replacement, let target):
+            return "CORRECT «\(original)» -> «\(replacement)» [\(target.rawValue)]"
+        case .undo(let eraseCount, let insert, let target):
+            return "UNDO erase \(eraseCount) insert «\(insert)» [\(target.rawValue)]"
+        }
     }
 
     /// Perform an engine action against the real screen.
@@ -133,21 +160,21 @@ final class LiveCorrector {
 
         case .correct(let original, let replacement, let target):
             engine.isBusy = true
-            lastEventSummary = "«\(original)» → «\(replacement)» (\(target.rawValue))"
             // Erase and insert are posted as one block with the tap muted, then the layout is
             // switched. The insert uses a Unicode string, so it lands correctly regardless of
             // which layout is active at that instant; switching afterwards means the next
             // physical key the user presses is decoded in the new layout.
             rewriter.replace(eraseCount: original.count, with: replacement, postingTo: tapLocation)
-            engine.switcher.select(target)
+            let switched = engine.switcher.select(target)
             engine.isBusy = false
+            log.write("  applied: erased \(original.count), inserted «\(replacement)», layout -> \(target.rawValue) ok=\(switched)")
 
         case .undo(let eraseCount, let insertText, let target):
             engine.isBusy = true
-            lastEventSummary = "undo → «\(insertText)» (\(target.rawValue))"
             rewriter.replace(eraseCount: eraseCount, with: insertText, postingTo: tapLocation)
-            engine.switcher.select(target)
+            let switched = engine.switcher.select(target)
             engine.isBusy = false
+            log.write("  applied undo: erased \(eraseCount), inserted «\(insertText)», layout -> \(target.rawValue) ok=\(switched)")
         }
     }
 
@@ -157,23 +184,29 @@ final class LiveCorrector {
 
     /// Turn a keyDown event into the character it produced.
     ///
-    /// Uses the event's own Unicode string where available, because that is already
-    /// layout-correct - it is what the target application will receive. Falls back to the
-    /// physical key when the event carries no text (modifier keys, dead keys, arrows).
-    private func character(from event: CGEvent, keyCode: CGKeyCode) -> Character? {
+    /// The event's own Unicode string is preferred: it is what the target application will
+    /// receive, and it already accounts for Shift and dead keys.
+    ///
+    /// The fallback derives the character from the key code and the layout table we already
+    /// read from the system. It exists because the Unicode string is not always present:
+    /// when it comes back empty, the old code returned nil and the program did nothing at
+    /// all, silently. That is exactly what the first live test did.
+    private func character(from event: CGEvent, keyCode: CGKeyCode, layout: Language) -> Character? {
         if let text = Self.typedText(of: event), let first = text.first {
-            // Reject anything that is not a single character we care about: control
-            // characters, and the private-use range some apps send for function keys.
+            // Reject control characters and the private-use range some apps send for
+            // function keys. Letters, digits and punctuation are the only things that can
+            // be part of a word.
             guard first.isLetter || first.isNumber || first.isPunctuation || first.isSymbol else {
                 return nil
             }
             return first
         }
 
-        // No text on the event: for the layouts we support, a printable letter always
-        // carries text, so treat this as a key we ignore rather than guessing.
-        _ = keyCode
-        return nil
+        // No text on the event: the same layout table the correction is based on cannot
+        // disagree with the dictionary check, so this is a safe source for the character.
+        let table = layout == .russian ? engine.russianLayout : engine.englishLayout
+        guard let produced = table.character(forKeyCode: keyCode) else { return nil }
+        return event.flags.contains(.maskShift) ? Character(produced.uppercased()) : produced
     }
 
     /// Read the text an event carries, using the SDK's exact signature:
@@ -195,5 +228,35 @@ final class LiveCorrector {
 
     deinit {
         stop()
+    }
+}
+
+/// Appends a running log to a file and to stdout.
+///
+/// Written synchronously and unbuffered on purpose. If the program is failing in a way that
+/// only shows up while typing, the log has to survive being killed seconds later.
+struct Log {
+    private let handle: FileHandle?
+
+    init(path: String) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path))
+        try? handle?.seekToEnd()
+        write("--- rukey started, log at \(path) ---")
+    }
+
+    func write(_ line: String) {
+        let stamped = "[\(Self.clock())] \(line)"
+        if let data = (stamped + "\n").data(using: .utf8) {
+            try? handle?.write(contentsOf: data)
+        }
+        print(stamped)
+        fflush(stdout)
+    }
+
+    static func clock() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: Date())
     }
 }

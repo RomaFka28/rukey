@@ -24,17 +24,27 @@ trap cleanup EXIT HUP INT TERM
 
 # Runs `swift test`, retrying ONLY when the macro plugin failed to resolve.
 #
-# Why: on this machine (Command Line Tools, no full Xcode) `swift test` intermittently
-# fails with "plugin for module 'TestingMacros' not found". It is NOT deterministic: it
-# fails on some consecutive runs and succeeds on the next, and a clean `rm -rf .build`
-# does not prevent it. Measured on an unchanged tree: macro_errors 0, 0, 60, 0 across four
-# consecutive runs. So the only reliable strategy is to retry until the log contains a real
-# summary line. This is a SwiftPM/CLT plugin-resolution bug, not a problem with the code
-# under test.
+# Why the retry: on this machine (Command Line Tools, no full Xcode) `swift test` can fail
+# with "plugin for module 'TestingMacros' not found". Two distinct causes needing different
+# handling:
+#
+#   1. Random flake. Measured on an unchanged tree: 0, 0, 60, 0 errors across four runs.
+#      Retrying is enough.
+#   2. A corrupted module cache, which makes every run fail until the cache is replaced.
+#      This happened for real: deleting ~/Library/Caches/org.swift.swiftpm did it, and
+#      `rm -rf .build` did NOT fix it - the build directory is not where the module cache
+#      lives. Passing a fresh `-module-cache-path` fixed it immediately.
+#
+# So: retry on the specific macro message, and if repeated attempts all fail the same way,
+# escalate to a fresh module cache path rather than spinning. This is a SwiftPM/CLT
+# plugin-resolution problem, never a problem with the code under test.
 #
 # The retry is keyed on "did the suite actually run", never on pass/fail. A genuine test
 # failure produces a summary line and is reported immediately.
 run_tests() {
+    # A prior `swift build` is required: restoring a file to content the build system
+    # already has cached does not reliably invalidate the object file, and the next run
+    # reports stale results. Touch alone is not enough.
     swift build >/dev/null 2>&1
     attempt=0
     while [ "$attempt" -lt 6 ]; do
@@ -45,9 +55,16 @@ run_tests() {
             # A real build error, not the flaky plugin. Report it, do not spin.
             return 1
         fi
-        echo "  (macro plugin flake on attempt $attempt, retrying)" >&2
+        echo "  (macro plugin flake on attempt $attempt)" >&2
     done
-    return 1
+
+    # Still failing after 6 attempts: assume the module cache is corrupt. Retrying alone
+    # cannot fix that case, so escalate once to a fresh cache path.
+    echo "  (escalating: retrying with a fresh module cache path)" >&2
+    fresh=$(mktemp -d "${TMPDIR:-/tmp}/rukey-modcache.XXXXXX")
+    swift test -Xswiftc -module-cache-path -Xswiftc "$fresh" >"$LOG" 2>&1
+    rm -rf "$fresh"
+    test_ran_at_all
 }
 
 # True when the suite produced a summary line, which means the tests actually executed.

@@ -91,7 +91,8 @@ struct Outcome: Sendable {
 
 func replay(_ screenText: String, layout: Language,
             detector: Detector, switcher: InputSourceSwitcher) -> Outcome {
-    var engine = KeyboardEngine(detector: detector, switcher: switcher)
+    var engine = KeyboardEngine(detector: detector, switcher: switcher,
+                                russianLayout: russianTable.layout, englishLayout: englishTable.layout)
     var index = 0
     for character in screenText {
         switch engine.type(character, layout: layout) {

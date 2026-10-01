@@ -24,7 +24,8 @@ struct KeyboardEngineTests {
             dictionary: try Self.words("ru")
         )
         return KeyboardEngine(detector: Detector(english: en, russian: ru, minimumEvidence: minimumEvidence),
-                              switcher: InputSourceSwitcher())
+                              switcher: InputSourceSwitcher(),
+                              russianLayout: ru.layout, englishLayout: en.layout)
     }
 
     private static func words(_ language: String) throws -> DictionaryIndex {
