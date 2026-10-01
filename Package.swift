@@ -14,6 +14,11 @@ let package = Package(
             dependencies: ["RukeyCore"],
             path: "Sources/rukey"
         ),
+        .executableTarget(
+            name: "rukey-measure",
+            dependencies: ["RukeyCore"],
+            path: "Sources/rukey-measure"
+        ),
         .testTarget(
             name: "RukeyCoreTests",
             dependencies: ["RukeyCore"],

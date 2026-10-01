@@ -21,28 +21,27 @@ public enum Intent: Equatable, Sendable {
 
 /// How strictly the re-decoded prefix has to look like the other language.
 ///
-/// Measured on the real corpora, top-1000 by frequency, replayed keystroke by
-/// keystroke (tools/measure_rules.py):
+/// Measured on the real corpora, top-1000 by frequency, replayed keystroke by keystroke
+/// through the real `KeyboardEngine` (`swift run rukey-measure`):
 ///
-///     wholeWord  L=3   FP ru 2.1%  FP en 0.5%  detect 96.1%  fires mid-word 75%
-///     wholeWord  L=4   FP ru 0.0%  FP en 0.2%  detect 83.4%  fires mid-word 37%
-///     prefixTree L=3   FP ru 2.9%  FP en 2.5%  detect 96.1%  fires mid-word 87%
-///     prefixTree L=4   FP ru 0.0%  FP en 0.3%  detect 83.4%  fires mid-word 67%
+///     wholeWord  L=2   FP ru 25.5%  FP en 3.4%  caught en→ru 92.8%  ru→en 58.4%  mid 93%
+///     wholeWord  L=3   FP ru  3.3%  FP en 0.9%  caught en→ru 94.3%  ru→en 68.0%  mid 75%
+///     wholeWord  L=4   FP ru  0.0%  FP en 0.2%  caught en→ru 83.1%  ru→en 64.2%  mid 37%
+///     prefixTree L=3   FP ru  5.0%  FP en 3.3%  caught en→ru 94.4%  ru→en 68.7%  mid 87%
+///     prefixTree L=4   FP ru  0.1%  FP en 0.3%  caught en→ru 83.2%  ru→en 64.2%  mid 67%
 ///
-/// The interesting result: which rule wins depends on the threshold, so the rule is not
-/// a free choice on top of a threshold.
+/// The rule is not a free choice on top of a threshold, it trades against it:
 ///
-/// - At L=3 the prefix tree costs more false positives than it saves: same detection
-///   (96.1%), worse FP (2.9% vs 2.1% on Russian, 2.5% vs 0.5% on English). Rejected.
-/// - At L=4 the prefix tree is the only measured combination with zero false positives on
-///   Russian. But it only detects 83% of mistakes.
+/// - At L=3 the prefix tree buys 0.1% detection and costs 1.7% more false positives on
+///   Russian. At L=4 it costs a little detection and nearly eliminates them, but the floor
+///   is not zero: it accepts prefixes, so `днее` slips through because `lytt` begins
+///   `lytton`.
+/// - Russian words mistyped on an English layout are caught far less often (68% vs 94%),
+///   and no threshold fixes that - it is a property of the two word lists.
 ///
-/// L=3 with `wholeWord` is the current default: 96.1% detection, 2.1% false positives on
-/// Russian, and it still fires before the last letter in 75% of cases. That residual 2%
-/// is accepted because Delete-to-undo exists for exactly this case.
-///
-/// `prefixTree` is kept because L=4 is the setting to switch to if the false positives
-/// turn out to matter more than the missed detections in real use.
+/// L=3 with `wholeWord` is the default: 94.3% detection, 3.3% false positives on Russian,
+/// still firing before the last letter in 75% of cases. The residual is accepted because
+/// Delete-to-undo exists for it. `prefixTree` at L=4 is the low-false-positive alternative.
 public enum MatchRule: Sendable {
     /// Fire only if the re-decoded prefix is itself a dictionary word.
     case wholeWord
