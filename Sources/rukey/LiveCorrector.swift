@@ -68,6 +68,7 @@ final class LiveCorrector {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            log.write("tapCreate returned nil - the tap was NOT installed")
             return false
         }
 
@@ -75,6 +76,7 @@ final class LiveCorrector {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
+        log.write("tap installed on the session tap, watching keyDown")
         return true
     }
 
@@ -191,22 +193,32 @@ final class LiveCorrector {
     /// read from the system. It exists because the Unicode string is not always present:
     /// when it comes back empty, the old code returned nil and the program did nothing at
     /// all, silently. That is exactly what the first live test did.
+    ///
+    /// Whitespace is deliberately NOT filtered out. The engine needs the space and the
+    /// Return to know a word ended - it is what clears the buffer, releases the correction
+    /// lock, and re-arms the undo. Dropping whitespace here made the buffer grow for the
+    /// whole session ("nea78yfcnhjq" in the first live log) and no word could ever be
+    /// finished. The engine treats these as signals and never tries to rewrite them.
     private func character(from event: CGEvent, keyCode: CGKeyCode, layout: Language) -> Character? {
         if let text = Self.typedText(of: event), let first = text.first {
-            // Reject control characters and the private-use range some apps send for
-            // function keys. Letters, digits and punctuation are the only things that can
-            // be part of a word.
-            guard first.isLetter || first.isNumber || first.isPunctuation || first.isSymbol else {
-                return nil
-            }
+            // Whitespace is kept on purpose: the space, Return and Tab are how the engine
+            // learns a word ended. Dropping them left the buffer growing for the whole
+            // session ("nea78yfcnhjq" in the first live log) and no word could ever finish.
+            guard KeyText.isForwardable(first) else { return nil }
             return first
         }
 
-        // No text on the event: the same layout table the correction is based on cannot
-        // disagree with the dictionary check, so this is a safe source for the character.
+        // No text on the event. The word-ending keys must still be reported, or the engine
+        // never learns where a word ended.
+        if let wordEnding = KeyText.wordEndingKeyCodes[keyCode] { return wordEnding }
+
+        // Otherwise: the same layout table the correction is based on cannot disagree with
+        // the dictionary check, so this is a safe source for the character.
         let table = layout == .russian ? engine.russianLayout : engine.englishLayout
         guard let produced = table.character(forKeyCode: keyCode) else { return nil }
-        return event.flags.contains(.maskShift) ? Character(produced.uppercased()) : produced
+        let shifted = event.flags.contains(.maskShift)
+        let character = shifted ? Character(produced.uppercased()) : produced
+        return KeyText.isForwardable(character) ? character : nil
     }
 
     /// Read the text an event carries, using the SDK's exact signature:
