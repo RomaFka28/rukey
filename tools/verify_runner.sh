@@ -22,39 +22,41 @@ cp "$TARGET" "$BACKUP"
 cleanup() { cp "$BACKUP" "$TARGET"; rm -f "$BACKUP" "$LOG"; }
 trap cleanup EXIT HUP INT TERM
 
-# Runs `swift test` and prints the summary line.
+# Runs `swift test`, retrying ONLY when the macro plugin failed to resolve.
 #
-# Why the retry: on this machine (Command Line Tools only, no full Xcode) the FIRST
-# `swift test` after any Swift source edit fails with "plugin for module 'TestingMacros'
-# not found". The second invocation succeeds. This is a SwiftPM/CLT plugin-resolution
-# bug, not a problem with the code under test. Verified: same file, same tree, run 1 has
-# 56 macro errors, run 2 reports real results.
+# Why: on this machine (Command Line Tools, no full Xcode) `swift test` intermittently
+# fails with "plugin for module 'TestingMacros' not found". It is NOT deterministic: it
+# fails on some consecutive runs and succeeds on the next, and a clean `rm -rf .build`
+# does not prevent it. Measured on an unchanged tree: macro_errors 0, 0, 60, 0 across four
+# consecutive runs. So the only reliable strategy is to retry until the log contains a real
+# summary line. This is a SwiftPM/CLT plugin-resolution bug, not a problem with the code
+# under test.
+#
+# The retry is keyed on "did the suite actually run", never on pass/fail. A genuine test
+# failure produces a summary line and is reported immediately.
 run_tests() {
-    # A prior `swift build` is required: restoring a file to content the build system
-    # already has cached does not reliably invalidate the object file, and the next run
-    # reports stale results. Touch alone is not enough.
     swift build >/dev/null 2>&1
-    swift test >"$LOG" 2>&1
-    # The TestingMacros retry. The macro plugin lives in
-    # CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib, and the
-    # first `swift test` after a source edit sometimes fails to resolve it. The retry only
-    # fires on that specific failure, so a genuine test failure is never masked. Two
-    # attempts, because it sometimes takes more than one.
     attempt=0
-    while grep -q "TestingMacros" "$LOG" && [ "$attempt" -lt 3 ]; do
+    while [ "$attempt" -lt 6 ]; do
         attempt=$((attempt + 1))
         swift test >"$LOG" 2>&1
+        test_ran_at_all && return 0
+        if ! grep -q "TestingMacros" "$LOG"; then
+            # A real build error, not the flaky plugin. Report it, do not spin.
+            return 1
+        fi
+        echo "  (macro plugin flake on attempt $attempt, retrying)" >&2
     done
+    return 1
 }
 
-# True when the run failed for a test reason rather than a build/macro reason. Without
-# this distinction a broken build is misreported as "the suite stayed green".
-summary_is() {
-    grep -qE "Test run with .* $1" "$LOG"
-}
-
+# True when the suite produced a summary line, which means the tests actually executed.
 test_ran_at_all() {
     grep -q "Test run with" "$LOG"
+}
+
+summary_is() {
+    grep -qE "Test run with .* $1" "$LOG"
 }
 
 echo "== baseline =="

@@ -12,9 +12,12 @@ import Foundation
 struct DetectorTests {
 
     /// Real layout tables from the system, real word lists from Resources/dict.
+    ///
+    /// Defaults mirror the measured optimum: L=3 with `wholeWord` (96.1% detection,
+    /// 2.1% false positives on Russian). See the MatchRule doc comment.
     private func makeDetector(
-        minimumEvidence: Int = 4,
-        rule: MatchRule = .prefixTree
+        minimumEvidence: Int = 3,
+        rule: MatchRule = .wholeWord
     ) throws -> Detector {
         let en = LanguageTable(
             language: .english,
@@ -41,22 +44,33 @@ struct DetectorTests {
     @Test("English typed on a Russian layout converts mid-word")
     func englishOnRussianLayout() throws {
         let d = try makeDetector()
-        // h-e-l-l typed on a Russian keyboard puts "рудд" on screen. Re-decoded, those are
-        // the keys of "hell", which is the start of "hello": enough to act on.
-        #expect(d.intent(for: "руд", current: .russian) == .undecided,
-                "3 characters is below the L=4 threshold")
-        #expect(d.intent(for: "рудд", current: .russian) == .convert(to: .english, text: "hell"),
-                "must fire before the last letter, not after the word ends")
+        // h-e-l on a Russian keyboard puts "руд" on screen. Re-decoded, those are the keys
+        // of "hel" - itself a word, so wholeWord fires here at L=3.
+        #expect(d.intent(for: "ру", current: .russian) == .undecided,
+                "2 characters is below the L=3 threshold")
+        #expect(d.intent(for: "руд", current: .russian) == .convert(to: .english, text: "hel"),
+                "fires on the third letter, before the word ends")
     }
 
     @Test("Russian typed on an English layout converts mid-word")
     func russianOnEnglishLayout() throws {
         let d = try makeDetector()
-        // п-р-и-в typed on a US keyboard puts "ghbd" on screen -> "прив", the start of
-        // "привет".
-        #expect(d.intent(for: "ghb", current: .english) == .undecided,
-                "3 characters is below the L=4 threshold")
-        #expect(d.intent(for: "ghbd", current: .english) == .convert(to: .russian, text: "прив"))
+        // "yt" is the English-layout rendering of н-е; "ytn" adds т, giving "нет".
+        #expect(d.intent(for: "yt", current: .english) == .undecided,
+                "2 characters is below the L=3 threshold")
+        #expect(d.intent(for: "ytn", current: .english) == .convert(to: .russian, text: "нет"),
+                "н-е-т typed on a US keyboard is 'ytn' and must become 'нет'")
+    }
+
+    @Test("a sample that is a word in BOTH layouts is left alone")
+    func ambiguousSampleIsNotConverted() throws {
+        // "ghb" re-decodes to "при", which is a valid Russian word - so this sample looks
+        // like a mistake. But "ghb" is also in the English corpus, and a word the user is
+        // typing correctly must never be rewritten. The current-language check has to win.
+        // Found by a failing test: the assumption that short garbage is never a real
+        // English word was wrong.
+        let d = try makeDetector()
+        #expect(d.intent(for: "ghb", current: .english) == .correct)
     }
 
     // MARK: - Never touch correct text
@@ -92,47 +106,56 @@ struct DetectorTests {
         }
     }
 
-    /// The false positives measured at L=2 and L=3 on the real corpora. At L=4 with the
-    /// prefix tree, none of these may fire.
-    @Test("the measured false-positive prefixes do not fire at L=4", arguments: [
+    /// The false positives measured on the real corpora at L=3 with the real dictionary.
+    /// They are accepted at L=3: the measured rate is 2.1% on Russian and Delete-to-undo
+    /// exists for exactly this case. L=4 + prefixTree is the zero-FP alternative.
+    @Test("the measured L=3 false positives are the accepted cost", arguments: [
         "вну", "дум", "куд", "пре", "пут", "сег", "смы", "туд", "усп",
     ])
-    func measuredFalsePositivesAreSuppressed(word: String) throws {
+    func measuredFalsePositivesAtL3(word: String) throws {
         let d = try makeDetector()
-        #expect(d.intent(for: word, current: .russian) == .undecided,
-                "\(word) measured as a false positive at L=3; must not convert at L=4")
+        if case .convert = d.intent(for: word, current: .russian) {
+            return  // a known false positive; undo covers it
+        }
+        Issue.record("\(word) used to be a known L=3 false positive; re-measure the tables")
+    }
+
+    @Test("L=4 with the prefix tree suppresses the false positives")
+    func l4PrefixTreeIsClean() throws {
+        let d = try makeDetector(minimumEvidence: 4, rule: .prefixTree)
+        for word in ["вну", "дум", "куд", "пре", "пут", "сег", "смы", "туд", "усп"] {
+            #expect(d.intent(for: word, current: .russian) == .undecided,
+                    "\(word) must not convert at L=4 + prefixTree")
+        }
     }
 
     // MARK: - The threshold and the rule are what do the work
 
-    @Test("the prefix tree is what makes mid-word firing possible")
+    @Test("the rule decides whether a mid-word prefix counts as evidence")
     func ruleMatters() throws {
-        // wholeWord cannot fire on "hell", because "hell" must itself be a word.
-        // prefixTree can, because it is a prefix of "hello".
+        // "hell" is a real word, so wholeWord fires on it. "hellp" is not a word but is
+        // the start of "hello", so only prefixTree fires there.
         let en = LanguageTable(language: .english, layout: try LayoutLoader.load(language: .english),
                                dictionary: DictionaryIndex(words: ["hello"]))
         let ru = LanguageTable(language: .russian, layout: try LayoutLoader.load(language: .russian),
                                dictionary: DictionaryIndex(words: ["привет"]))
 
-        let strict = Detector(english: en, russian: ru, minimumEvidence: 4, rule: .wholeWord)
+        let strict = Detector(english: en, russian: ru, minimumEvidence: 3, rule: .wholeWord)
         #expect(strict.intent(for: "рудд", current: .russian) != .convert(to: .english, text: "hell"),
-                "wholeWord has no evidence for 'hell' when only 'hello' is in the list")
+                "wholeWord has no evidence: 'hell' is not in a list that only has 'hello'")
 
-        let eager = Detector(english: en, russian: ru, minimumEvidence: 4, rule: .prefixTree)
+        let eager = Detector(english: en, russian: ru, minimumEvidence: 3, rule: .prefixTree)
         #expect(eager.intent(for: "рудд", current: .russian) == .convert(to: .english, text: "hell"),
                 "prefixTree sees 'hell' as the start of 'hello'")
     }
 
-    @Test("lowering the threshold to L=3 lets the measured false positives through")
-    func thresholdIsWhatSuppressesThem() throws {
+    @Test("at L=3 the prefix tree costs false positives without buying detection")
+    func prefixTreeIsNotWorthItAtL3() throws {
+        // The measurement that chose wholeWord for L=3, asserted so a corpus change that
+        // flips it is visible.
         let d = try makeDetector(minimumEvidence: 3, rule: .prefixTree)
-        // "пут" -> "gen" was a false positive at L=3 with the real corpus.
-        if case .convert = d.intent(for: "пут", current: .russian) {
-            // Expected at L=3; if this ever stops being true the corpora changed and the
-            // numbers in PLAN.md need re-measuring.
-            return
-        }
-        Issue.record("expected 'пут' to convert at L=3; if not, re-measure the thresholds")
+        #expect(d.intent(for: "пут", current: .russian) == .convert(to: .english, text: "gen"),
+                "prefixTree at L=3 admits the measured 'пут->gen' false positive")
     }
 
     // MARK: - Single-alphabet guarantee

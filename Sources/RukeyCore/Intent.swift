@@ -24,20 +24,31 @@ public enum Intent: Equatable, Sendable {
 /// Measured on the real corpora, top-1000 by frequency, replayed keystroke by
 /// keystroke (tools/measure_rules.py):
 ///
-///     wholeWord  L=3   FP ru 2.1%  FP en 0.5%  detect 96%  fires mid-word 75%
-///     prefixTree L=4   FP ru 0.0%  FP en 0.3%  detect 83%  fires mid-word 67%
+///     wholeWord  L=3   FP ru 2.1%  FP en 0.5%  detect 96.1%  fires mid-word 75%
+///     wholeWord  L=4   FP ru 0.0%  FP en 0.2%  detect 83.4%  fires mid-word 37%
+///     prefixTree L=3   FP ru 2.9%  FP en 2.5%  detect 96.1%  fires mid-word 87%
+///     prefixTree L=4   FP ru 0.0%  FP en 0.3%  detect 83.4%  fires mid-word 67%
 ///
-/// The prefix tree is the right rule, at L=4. It is the only combination measured with
-/// zero false positives on correctly-typed Russian while still correcting most mistakes,
-/// and it still fires before the last letter two thirds of the time, which is the whole
-/// point of the project. prefixTree at L=3 has the best timing but doubles the false
-/// positives on Russian; wholeWord at L=3 keeps detection but cannot fire before a
-/// prefix is itself a complete word.
+/// The interesting result: which rule wins depends on the threshold, so the rule is not
+/// a free choice on top of a threshold.
+///
+/// - At L=3 the prefix tree costs more false positives than it saves: same detection
+///   (96.1%), worse FP (2.9% vs 2.1% on Russian, 2.5% vs 0.5% on English). Rejected.
+/// - At L=4 the prefix tree is the only measured combination with zero false positives on
+///   Russian. But it only detects 83% of mistakes.
+///
+/// L=3 with `wholeWord` is the current default: 96.1% detection, 2.1% false positives on
+/// Russian, and it still fires before the last letter in 75% of cases. That residual 2%
+/// is accepted because Delete-to-undo exists for exactly this case.
+///
+/// `prefixTree` is kept because L=4 is the setting to switch to if the false positives
+/// turn out to matter more than the missed detections in real use.
 public enum MatchRule: Sendable {
     /// Fire only if the re-decoded prefix is itself a dictionary word.
     case wholeWord
 
-    /// Fire if the re-decoded prefix is a prefix of some dictionary word. Reacts sooner.
+    /// Fire if the re-decoded prefix is a prefix of some dictionary word. Reacts sooner,
+    /// but only pays off at L=4.
     case prefixTree
 
     func matches(_ candidate: String, words: DictionaryIndex) -> Bool {
@@ -66,8 +77,8 @@ public struct Detector: Sendable {
     public init(
         english: LanguageTable,
         russian: LanguageTable,
-        minimumEvidence: Int = 4,
-        rule: MatchRule = .prefixTree,
+        minimumEvidence: Int = 3,
+        rule: MatchRule = .wholeWord,
         maximumRewritableLength: Int = 64
     ) {
         self.english = english
