@@ -3,26 +3,28 @@ import PackageDescription
 
 let package = Package(
     name: "Rukey",
-    platforms: [.macOS(.v14)],
+    platforms: [
+        .macOS(.v13)
+    ],
+    products: [
+        .library(name: "RukeyCore", targets: ["RukeyCore"]),
+        .executable(name: "rukey", targets: ["RukeyApp"]),
+        .executable(name: "rukey-measure", targets: ["RukeyMeasure"]),
+    ],
     targets: [
         .target(
             name: "RukeyCore",
-            path: "Sources/RukeyCore"
+            resources: [
+                .process("Resources")
+            ]
         ),
         .executableTarget(
-            name: "rukey",
-            dependencies: ["RukeyCore"],
-            path: "Sources/rukey"
+            name: "RukeyApp",
+            dependencies: ["RukeyCore"]
         ),
         .executableTarget(
-            name: "rukey-measure",
-            dependencies: ["RukeyCore"],
-            path: "Sources/rukey-measure"
-        ),
-        .testTarget(
-            name: "RukeyCoreTests",
-            dependencies: ["RukeyCore"],
-            path: "Tests/RukeyCoreTests"
+            name: "RukeyMeasure",
+            dependencies: ["RukeyCore"]
         ),
     ]
 )

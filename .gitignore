@@ -4,3 +4,5 @@ tools/cache/
 
 # Dictionaries ARE committed: they are build inputs the app needs at runtime, and
 # regenerating them requires network access.
+# macOS Finder noise: never commit.
+.DS_Store
