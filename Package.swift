@@ -26,5 +26,9 @@ let package = Package(
             name: "RukeyMeasure",
             dependencies: ["RukeyCore"]
         ),
+        .testTarget(
+            name: "RukeyCoreTests",
+            dependencies: ["RukeyCore"]
+        ),
     ]
 )
