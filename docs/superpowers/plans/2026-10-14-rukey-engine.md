@@ -1074,6 +1074,14 @@ final class UndoManagerTests: XCTestCase {
         // The valve drops the undo rather than letting an unbounded erase
         // reach into text the user has long since moved past.
         XCTAssertFalse(manager.canUndo)
+        // Just below the valve the undo survives, so this is a valve and not an
+        // off-by-one that swallows every tail: 3 ("при") + 61 = 64, the limit
+        // itself, and only *exceeding* it resets.
+        let kept = RukeyUndoManager()
+        kept.recordCorrection(decision())
+        kept.appendToTail(String(repeating: "я", count: 61))
+        XCTAssertTrue(kept.canUndo)
+        XCTAssertEqual(kept.calculateUndo()?.backspacesNeeded, 64)
     }
 
     func testTailOnAnEmptyUndoIsIgnored() {
@@ -1094,6 +1102,18 @@ final class UndoManagerTests: XCTestCase {
         manager.recordCorrection(decision())
         XCTAssertNotNil(manager.calculateUndo())
         XCTAssertNil(manager.calculateUndo())
+    }
+
+    func testLastUndoneIsEmptyUntilAnUndoHappens() {
+        let manager = RukeyUndoManager()
+        XCTAssertNil(manager.lastUndone)
+        manager.recordCorrection(decision())
+        // Recording is not undoing: the learning logic must never see a pair
+        // the user did not take back.
+        XCTAssertNil(manager.lastUndone)
+        _ = manager.calculateUndo()
+        XCTAssertEqual(manager.lastUndone?.original, "ghb")
+        XCTAssertEqual(manager.lastUndone?.converted, "при")
     }
 
     func testBackspacesUseUTF16Length() {
@@ -1122,6 +1142,16 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift` — this pins Review Focus 
         XCTAssertEqual(first?.convertedText, "при")
         XCTAssertEqual(second?.convertedText, "тест")
         XCTAssertNotEqual(first?.originalText, second?.originalText)
+        // The three assertions above only show the detector produces two
+        // decisions with different originals. The review focus is about the
+        // consequence: the manager ends up holding the second, so one Option tap
+        // undoes "тест" and cannot also undo "при". If either decision were nil
+        // the loop would record fewer and the assertion below would fail too.
+        let manager = RukeyUndoManager()
+        for decision in [first, second].compactMap({ $0 }) {
+            manager.recordCorrection(decision)
+        }
+        XCTAssertEqual(manager.calculateUndo()?.textToRestore, "ntcn")
     }
 ```
 
@@ -1138,6 +1168,8 @@ In `Sources/RukeyCore/UndoManager.swift`:
 - Add `public func appendToTail(_ text: String)` guarded by the same `NSLock.withLock`. When there is no state, return without recording. Accumulate into `appendedTail`; when `convertedText.utf16EraseLength + appendedTail.utf16EraseLength` exceeds `maxTailLength`, clear the state instead.
 - Keep `calculateUndo()` atomic and consuming exactly as it is today — the existing comment at `UndoManager.swift:82-85` about the TOCTOU fix must survive the edit.
 - Keep erase arithmetic on `utf16EraseLength`, never `.count`.
+- `recordCorrection` keeps replacing the whole state, tail included. That is what stops a tail typed after an earlier correction from outliving it — the check is not "add a reset", it is "do not lose the one you already have".
+- `calculateUndo()` publishes `lastUndone` — the pair it is about to consume — under the same lock, before `lastState = nil`. Neither `clear()` nor `recordCorrection` resets it: it answers "what did the user last take back?", which stays true until the next undo.
 
 - [ ] **Step 5: Route EventTapManager's typing path into the tail instead of clearing**
 
