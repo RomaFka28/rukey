@@ -817,6 +817,8 @@ public final class CustomDictionary: @unchecked Sendable {
 }
 ```
 
+`Detector` gains `public let customDictionary: CustomDictionary` — it is part of this task's produced surface, because Task 8's bootstrap and the GUI plan both construct the detector around it.
+
 `replaceAll` persists to `custom.json` under the lock as `{"words": [...]}`, sorted so the file does not churn. A missing file starts empty and silent; a corrupt one logs a `.warn` and starts empty. `init` is the only reader.
 
 - [ ] **Step 1: Write the failing Detector tests**
@@ -931,6 +933,110 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
             detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english),
             baseline)
     }
+
+    // MARK: - The custom dictionary on the punctuated path
+
+    func testTaughtWordWithEdgePunctuationIsNotFlipped() {
+        // The punctuated path is the third decision site and must consult the
+        // custom dictionary exactly as the other two do. Without the widening this
+        // exact case returned `привет!` while `ghbdtn` alone returned nil.
+        let (detector, _) = makeTaughtDetector(words: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn!", currentLanguage: .english))
+        // Control: with nothing taught the very same token really does convert, so
+        // the nil above cannot be a dead path.
+        let (control, _) = makeTaughtDetector(words: [])
+        XCTAssertEqual(
+            control.evaluateFullWord(buffer: "ghbdtn!", currentLanguage: .english)?.convertedText,
+            "привет!")
+    }
+
+    func testTaughtWordConvertsWithEdgePunctuation() {
+        // The converse direction: teaching `заозкздзаоз` lets its Latin typing
+        // convert, and that must keep working when the token carries punctuation —
+        // otherwise the taught word would land only sometimes.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "pfjprplpfjp,", currentLanguage: .english)?
+                .convertedText,
+            "заозкздзаоз,")
+    }
+
+    func testTaughtWordPrefixIsNotProtectedOnEitherPath() {
+        // A longer taught word does not promote its own prefix to a word of its
+        // own. The boundary path and the punctuated path must agree, exactly as
+        // they do for the bare form; protecting a prefix on one path but not the
+        // other is the shape of defect Review Focus #5 exists to prevent. This is
+        // why the punctuated path takes `contains`, not `isPrefixOfKnown`.
+        let (detector, _) = makeTaughtDetector(words: ["ghbdtnabc"])
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english)?.convertedText,
+            "привет")
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "ghbdtn!", currentLanguage: .english)?.convertedText,
+            "привет!")
+    }
+
+    // MARK: - Pinning the widened arms
+
+    func testTaughtRussianPrefixIsNotFlippedIntoLatinMidWord() {
+        // Pins the Russian branch's `isCurrentValid` widening. The Latin form is
+        // taught too, so the flip branch is reachable: only that widening stands
+        // between the taught word's prefix and a mid-word flip into Latin.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз", "pfjhello"])
+        XCTAssertNil(detector.evaluate(buffer: "зао", currentLanguage: .russian))
+    }
+
+    func testTaughtLatinWordConvertsFromItsCyrillicKeystrokesMidWord() {
+        // Pins the Russian branch's `isConvertedValid` widening *and* its junk-gate
+        // waiver at once: `чндщзр` spells `xyloph`, which starts no `enTrie` word
+        // (`countCompletions == 0`), so the gate would block a flip the waiver must
+        // let through.
+        let (detector, _) = makeTaughtDetector(words: ["xylophone"])
+        XCTAssertEqual(
+            detector.evaluate(buffer: "чндщзр", currentLanguage: .russian)?.convertedText,
+            "xyloph")
+    }
+
+    func testTaughtLatinWordIsNotFlippedBackMidWord() {
+        // Pins the English branch's on-the-fly `isCurrentValid` widening. `привет`
+        // clears the junk bar and `ghbdtn` starts no `enTrie` word, so nothing but
+        // the widening can make the taught word valid here.
+        let (detector, _) = makeTaughtDetector(words: ["ghbdtnabc"])
+        XCTAssertNil(detector.evaluate(buffer: "ghbdtn", currentLanguage: .english))
+    }
+
+    func testTaughtLatinWordSurvivesAtTheWordBoundary() {
+        // The same widening on the boundary path, mirroring the `руддщ` case on
+        // the English side.
+        let (detector, _) = makeTaughtDetector(words: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+    }
+
+    // MARK: - Persistence behaviours worth a pin
+
+    func testPersistCreatesTheConfigDirectory() {
+        // A fresh install has no `~/.config/rukey` yet; the first taught word must
+        // still reach the disk rather than fail inside the caught write error.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rukey-\(UUID().uuidString)")  // does not exist
+        let url = directory.appendingPathComponent("custom.json")
+        let dictionary = CustomDictionary(fileURL: url)
+        dictionary.replaceAll(with: ["заозкздзаоз"])
+        XCTAssertTrue(CustomDictionary(fileURL: url).contains("заозкздзаоз"))
+    }
+
+    func testUnwritableSaveIsReportedNotSwallowed() {
+        // A silently lost taught word is exactly what spec anti-goal 2 forbids. Put
+        // a *file* where the directory must be created, so the save throws.
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blocker-\(UUID().uuidString)")
+        try? Data().write(to: blocker)
+        let buffer = LogBuffer()
+        let dictionary = CustomDictionary(
+            fileURL: blocker.appendingPathComponent("custom.json"), logBuffer: buffer)
+        dictionary.replaceAll(with: ["заозкздзаоз"])
+        XCTAssertTrue(buffer.lines().contains { $0.level == .warn })
+    }
 ```
 
 - [ ] **Step 2: Run the tests to see them fail**
@@ -940,7 +1046,7 @@ Expected: FAIL — `cannot find 'CustomDictionary' in scope`.
 
 - [ ] **Step 3: Implement `CustomDictionary`**
 
-Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie` construction as `WordFilter` from Task 3 Step 4, trimmed and dropping empty words, plus persistence. Expose both `contains` (exact, via `Trie.contains`) and `isPrefixOfKnown` (via `Trie.hasPrefix`) — the detector needs prefix membership on the on-the-fly path, where it is asked whether `pfj` is the start of a taught word rather than whether it is one.
+Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie` construction as `WordFilter` from Task 3 Step 4, trimmed and dropping empty words, plus persistence. Expose both `contains` (exact, via `Trie.contains`) and `isPrefixOfKnown` (via `Trie.hasPrefix`) — the detector needs prefix membership on the on-the-fly path, where it is asked whether `pfj` is the start of a taught word rather than whether it is one. End the file with a newline; at `4ac46bc` it was the only file in the repository without one.
 
 Like `WordFilter`, this is a `@unchecked Sendable` class and carries the attribute's justification in a comment, because the Global Constraints require one: the lock guards both stored properties, the pair is only ever swapped together, and the published trie is never mutated afterwards, so a reader cannot observe a trie that disagrees with its backing word set.
 
@@ -968,6 +1074,34 @@ would silently block `hello`" risk that widening `isCurrentValid` carries.
 
 Leave `wordFilter` out of this method entirely; the exclusion filter is checked
 before the trie work, per Task 3.
+
+**The punctuated path is the third decision site.** `decisionForPunctuatedToken(in:)` decides tokens that end in punctuation, and it must consult the custom dictionary too. Widen its local `contains` helper, both arms:
+
+```swift
+        func contains(_ text: String, _ lang: Language) -> Bool {
+            lang == .russian
+                ? ruTrie.contains(text) || customDictionary.contains(text)
+                : enTrie.contains(text) || customDictionary.contains(text)
+        }
+```
+
+Take `contains`, not `isPrefixOfKnown`: this is a complete-token path, exactly like the run path's boundary arm, and those two must agree about the same typing. Adding an `isPrefixOfKnown` gate next to the filter gate would make the punctuated path *stricter* than the boundary path — with `ghbdtnabc` taught, `ghbdtn` converts but `ghbdtn!` would be blocked — which is a fresh instance of the cross-path disagreement Review Focus #5 forbids. Prefix protection belongs on the on-the-fly arm only, where the word is still being typed. The pair of tests above pins both holes: with `ghbdtn` taught, `ghbdtn!` must stay `ghbdtn!`; and a taught word's Latin typing must still convert once a comma follows it.
+
+**One lookup, not two.** On the on-the-fly path `customDictionary.isPrefixOfKnown(converted)` is the right arm of `isConvertedValid` and is computed a second time by the junk-gate waiver — two lock acquisitions and two trie walks for one answer, on the hottest path in the product. Hoist it in both branches:
+
+```swift
+            let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
+            let isConvertedValid = fullWord
+                ? enTrie.contains(converted) || customDictionary.contains(converted)
+                : enTrie.hasPrefix(converted) || taughtTarget
+            if !isCurrentValid && isConvertedValid {
+                if !fullWord,
+                    !taughtTarget,
+                    enTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
+                { return nil }
+```
+
+(The `ruTrie`/`enTrie` roles swap in the other branch. The `fullWord ? false` arm keeps the boundary path from gaining a lookup it never had. This is the only place in the task where the code shape — not just the condition — may change; everything else stays as written above.)
 
 **Hermeticity.** Defaulting `customDictionary` in `Detector.init` means every
 existing `Detector(...)` construction that omits it now reads the developer's real
