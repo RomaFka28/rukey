@@ -34,19 +34,26 @@ public final class Detector: @unchecked Sendable {
     /// Words the user never wants converted. Consulted by every path below, so an
     /// excluded word is blocked from its first keystroke rather than corrected.
     public let wordFilter: WordFilter
+    /// Words the user taught the daemon, which count as real even though neither
+    /// shipped trie knows them. Consulted as an extra membership test on both
+    /// sides of every conversion: it lets `pfjprplpfjp` become the taught
+    /// `заозкздзаоз`, and it keeps that taught word from being flipped back.
+    public let customDictionary: CustomDictionary
 
     public init(
         enTrie: Trie,
         ruTrie: Trie,
         minPrefixLength: Int = 3,
         minTargetCompletions: Int = 3,
-        wordFilter: WordFilter = WordFilter()
+        wordFilter: WordFilter = WordFilter(),
+        customDictionary: CustomDictionary = CustomDictionary()
     ) {
         self.enTrie = enTrie
         self.ruTrie = ruTrie
         self.minPrefixLength = minPrefixLength
         self.minTargetCompletions = minTargetCompletions
         self.wordFilter = wordFilter
+        self.customDictionary = customDictionary
     }
 
     /// Common pre-step: isolate the trailing homogeneous script run and
@@ -66,12 +73,26 @@ public final class Detector: @unchecked Sendable {
         guard !wordFilter.isPrefixOfExcluded(word) else { return nil }
         if bufferLang == .russian {
             let converted = LayoutConverter.toEnglish(word)
-            let isCurrentValid = fullWord ? ruTrie.contains(word) : ruTrie.hasPrefix(word)
-            let isConvertedValid = fullWord ? enTrie.contains(converted) : enTrie.hasPrefix(converted)
+            // Both sides widen with the taught words. `isCurrentValid` widening is
+            // what stops a taught word being flipped back into Latin;
+            // `isConvertedValid` widening is what makes the Latin typing of a taught
+            // word convert at all. The latter can only ever *enable* a conversion,
+            // never block one, so it carries none of the risk the former does.
+            let isCurrentValid = fullWord
+                ? ruTrie.contains(word) || customDictionary.contains(word)
+                : ruTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
+            let isConvertedValid = fullWord
+                ? enTrie.contains(converted) || customDictionary.contains(converted)
+                : enTrie.hasPrefix(converted) || customDictionary.isPrefixOfKnown(converted)
             if !isCurrentValid && isConvertedValid {
                 // On-the-fly only: demand a well-backed target prefix, otherwise a
                 // typo + one junk dictionary entry flips the layout (see `ghul`).
-                if !fullWord && enTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions {
+                // The bar is waived for a taught word: the user taught it, so it is
+                // by definition real — which is what the bar exists to establish.
+                if !fullWord,
+                    !customDictionary.isPrefixOfKnown(converted),
+                    enTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
+                {
                     return nil
                 }
                 return CorrectionDecision(
@@ -84,10 +105,17 @@ public final class Detector: @unchecked Sendable {
             }
         } else {
             let converted = LayoutConverter.toRussian(word)
-            let isCurrentValid = fullWord ? enTrie.contains(word) : enTrie.hasPrefix(word)
-            let isConvertedValid = fullWord ? ruTrie.contains(converted) : ruTrie.hasPrefix(converted)
+            let isCurrentValid = fullWord
+                ? enTrie.contains(word) || customDictionary.contains(word)
+                : enTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
+            let isConvertedValid = fullWord
+                ? ruTrie.contains(converted) || customDictionary.contains(converted)
+                : ruTrie.hasPrefix(converted) || customDictionary.isPrefixOfKnown(converted)
             if !isCurrentValid && isConvertedValid {
-                if !fullWord && ruTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions {
+                if !fullWord,
+                    !customDictionary.isPrefixOfKnown(converted),
+                    ruTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
+                {
                     return nil
                 }
                 return CorrectionDecision(

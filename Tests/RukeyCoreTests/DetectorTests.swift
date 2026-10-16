@@ -2,6 +2,17 @@ import XCTest
 @testable import RukeyCore
 
 final class DetectorTests: XCTestCase {
+    /// An always-empty custom dictionary on a private temporary file.
+    ///
+    /// `Detector.init` defaults `customDictionary` to `CustomDictionary()`, which
+    /// reads `~/.config/rukey/custom.json`. Every construction in this suite passes
+    /// one explicitly so no test depends on — or writes to — the real config
+    /// directory of whoever runs it.
+    private func makeEmptyCustomDictionary() -> CustomDictionary {
+        CustomDictionary(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-\(UUID().uuidString).json"))
+    }
+
     private func makeDetector(
         minTargetCompletions: Int = 3,
         minPrefixLength: Int = 3
@@ -10,7 +21,8 @@ final class DetectorTests: XCTestCase {
             enTrie: TestDictionaries.enTrie,
             ruTrie: TestDictionaries.ruTrie,
             minPrefixLength: minPrefixLength,
-            minTargetCompletions: minTargetCompletions
+            minTargetCompletions: minTargetCompletions,
+            customDictionary: makeEmptyCustomDictionary()
         )
     }
 
@@ -83,7 +95,8 @@ final class DetectorTests: XCTestCase {
             ruTrie: TestDictionaries.ruTrie,
             minPrefixLength: 3,
             minTargetCompletions: 2,
-            wordFilter: filter
+            wordFilter: filter,
+            customDictionary: makeEmptyCustomDictionary()
         )
         return (detector, filter)
     }
@@ -149,5 +162,96 @@ final class DetectorTests: XCTestCase {
         XCTAssertNotNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
         filter.replaceAll(with: ["ghbdtn"])
         XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+    }
+
+    // MARK: - Custom dictionary
+
+    private func makeTaughtDetector(words: Set<String>) -> (Detector, CustomDictionary) {
+        // A per-test temporary file: `replaceAll` writes to disk, and tests must
+        // never touch the real ~/.config/rukey/custom.json.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-\(UUID().uuidString).json")
+        let dictionary = CustomDictionary(fileURL: url, words: words)
+        let detector = Detector(
+            enTrie: TestDictionaries.enTrie,
+            ruTrie: TestDictionaries.ruTrie,
+            minPrefixLength: 3,
+            minTargetCompletions: 2,
+            customDictionary: dictionary
+        )
+        return (detector, dictionary)
+    }
+
+    func testTaughtWordConvertsAtWordBoundary() {
+        // "заозкздзаоз" is exactly what "pfjprplpfjp" spells. The word must be
+        // comma-free: `б` sits on the comma key, so a word containing it types
+        // with an interior comma, which splits the script run and yields nil.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
+        let decision = detector.evaluateFullWord(
+            buffer: "pfjprplpfjp", currentLanguage: .russian)
+        XCTAssertEqual(decision?.convertedText, "заозкздзаоз")
+    }
+
+    func testTaughtWordAlsoEnablesTheMidWordFlip() {
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
+        // Flipping at "pfj" is better UX than waiting for the boundary: the
+        // remaining keys then spell "зкздзаоз" in the target layout and the
+        // whole word lands correctly either way.
+        XCTAssertEqual(detector.evaluate(buffer: "pfj", currentLanguage: .russian)?.convertedText, "зао")
+    }
+
+    func testTaughtWordIsNotConvertedBack() {
+        // A word the user taught in Russian must survive being read as English.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
+        XCTAssertNil(detector.evaluateFullWord(
+            buffer: "заозкздзаоз", currentLanguage: .russian))
+    }
+
+    func testTaughtWordDoesNotLicenseReverseConversion() {
+        // Teaching a word teaches what may be typed, not what it may become:
+        // the taught Russian word is never itself flipped into Latin.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
+        XCTAssertFalse(
+            detector.customDictionary.contains("pfjprplpfjp"),
+            "the Latin form must not be taught implicitly")
+        XCTAssertNil(detector.evaluateFullWord(
+            buffer: "заозкздзаоз", currentLanguage: .russian))
+    }
+
+    func testCustomDictionarySwappedAtRuntimeTakesEffectImmediately() {
+        let (detector, dictionary) = makeTaughtDetector(words: [])
+        XCTAssertNil(detector.evaluateFullWord(
+            buffer: "pfjprplpfjp", currentLanguage: .russian))
+        dictionary.replaceAll(with: ["заозкздзаоз"])
+        XCTAssertNotNil(detector.evaluateFullWord(
+            buffer: "pfjprplpfjp", currentLanguage: .russian))
+    }
+
+    func testCustomDictionaryPersistsToCustomJSON() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-\(UUID().uuidString).json")
+        let dictionary = CustomDictionary(fileURL: url)
+        dictionary.replaceAll(with: ["заозкздзаоз"])
+        let reloaded = CustomDictionary(fileURL: url)
+        XCTAssertTrue(reloaded.contains("заозкздзаоз"))
+    }
+
+    func testCorruptCustomFileStartsEmptyAndReports() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-\(UUID().uuidString).json")
+        try? "{ broken".write(to: url, atomically: true, encoding: .utf8)
+        let buffer = LogBuffer()
+        let dictionary = CustomDictionary(fileURL: url, logBuffer: buffer)
+        XCTAssertFalse(dictionary.contains("заозкздзаоз"))
+        XCTAssertTrue(buffer.lines().contains { $0.level == .warn })
+    }
+
+    func testEmptyCustomDictionaryPreservesBaselineDecision() {
+        let baseline = makeDetector().evaluateFullWord(
+            buffer: "ghbdtn", currentLanguage: .english)
+        let (detector, _) = makeTaughtDetector(words: [])
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english),
+            baseline)
     }
 }
