@@ -39,6 +39,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
     /// The settings window, built on first use and held for the app's lifetime.
     private var settingsWindow: SettingsWindowController?
+    /// The settings writer shared by the general tab and the menu's
+    /// launch-at-login checkbox. Built with the engine (it holds the live
+    /// engine objects); nil until the grant appears.
+    private var settingsStore: SettingsStore?
     /// Whether `engine.tapManager.start()` actually started the tap. A grant
     /// alone must not read "Работает": the status line distinguishes a real
     /// running tap from a failed start ("Не запущено").
@@ -128,6 +132,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self.engine = engine
             self.hub = hub
             observe(hub)
+            self.settingsStore = SettingsStore(
+                engine: engine, state: state, configFileURL: RukeyConfig.configFileURL)
 
             let started = engine.tapManager.start()
             tapRunning = started
@@ -218,28 +224,42 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshStatusModel()
     }
 
-    /// The menu checkbox writes the flag and persists it for now; Task 6's
-    /// `SettingsStore` replaces this with the LaunchAgent registration path.
+    /// The menu checkbox, wired to the same store the general tab uses — one
+    /// source of truth, one registration path. The store writes the LaunchAgent
+    /// plist and rolls the flag back when it cannot; the menu only mirrors
+    /// `state.launchAtLogin`, so a failed registration leaves the checkbox off.
+    /// Before the engine exists (pre-grant) the store does not exist yet: the
+    /// click is refused with a log line rather than persisting a flag that
+    /// would make the checkbox lie.
     private func setLaunchAtLogin(_ enabled: Bool) {
-        state.launchAtLogin = enabled
-        // Re-read before mutating — the writer may not be the only editor.
-        var current = RukeyConfig.load(
-            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-        current.launchAtLogin = enabled
-        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
+        guard let store = settingsStore else {
+            LogBuffer.shared.log(
+                "Автозапуск станет доступен после получения прав Accessibility.",
+                level: .warn)
+            refreshStatusModel()
+            return
+        }
+        store.launchAtLogin = enabled
+        if let error = store.lastError {
+            // The general tab shows this too; the menu is closed by the time
+            // the write runs, so the log is the visible record here.
+            LogBuffer.shared.log("Автозапуск: \(error)", level: .warn)
+        }
         refreshStatusModel()
     }
 
-    /// The `Настройки…` opener. The window edits the live word lists, so it
-    /// needs the engine — and the engine only exists once the grant has
-    /// appeared; a click before that is a no-op, with the red status row
-    /// already explaining why. The controller is created once and reused.
+    /// The `Настройки…` opener. The window edits the live word lists and hosts
+    /// the general tab, so it needs the engine and the settings store — and
+    /// both only exist once the grant has appeared; a click before that is a
+    /// no-op, with the red status row already explaining why. The controller is
+    /// created once and reused.
     private func openSettings() {
-        guard let engine else { return }
+        guard let engine, let settingsStore else { return }
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 engine: engine,
                 state: state,
+                store: settingsStore,
                 onClose: { [weak self] in
                     self?.settingsWindowDidClose()
                 })

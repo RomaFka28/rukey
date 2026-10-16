@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import RukeyCore
 import SwiftUI
@@ -242,10 +243,14 @@ public final class AppListModel: ObservableObject {
 
 /// The settings window's SwiftUI root: the four tabs, in the spec's order.
 ///
-/// The `Слова` and `Приложения` tabs carry their UIs; «Общее» and «Журнал» are
-/// placeholders whose content arrives in later tasks. Keeping their tabs
-/// present now means the window's shape does not change under the user later.
+/// `Слова` and `Приложения` carry their models; `Общее` and `Журнал` bind
+/// through the `SettingsStore`, which is also the menu checkbox's writer, so
+/// the window and the menu share one source of truth. No control uses `@State`
+/// — that is a macro whose implementation plugin ships only with Xcode; the
+/// Command-Line-Tools toolchain cannot expand it, so every control binds
+/// through the store.
 struct SettingsView: View {
+    @ObservedObject var store: SettingsStore
     @ObservedObject var words: WordListModel
     @ObservedObject var apps: AppListModel
 
@@ -255,9 +260,9 @@ struct SettingsView: View {
                 .tabItem { Text("Слова") }
             ApplicationsTab(apps: apps)
                 .tabItem { Text("Приложения") }
-            PlaceholderTab(text: "Раздел «Общее» появится позже.")
+            GeneralTab(store: store)
                 .tabItem { Text("Общее") }
-            PlaceholderTab(text: "Раздел «Журнал» появится позже.")
+            LogTab(store: store)
                 .tabItem { Text("Журнал") }
         }
         .frame(minWidth: 520, minHeight: 440)
@@ -491,19 +496,165 @@ private struct AppPickerSheet: View {
     }
 }
 
-/// A tab whose content arrives in a later task.
-private struct PlaceholderTab: View {
-    let text: String
+/// The `Общее` tab: the scalar settings, each control bound through the store,
+/// so a change reaches the live objects and the config file in one call — and
+/// a failed launch-at-login registration visibly snaps the checkbox back.
+private struct GeneralTab: View {
+    @ObservedObject var store: SettingsStore
 
     var body: some View {
-        VStack {
-            Spacer()
-            Text(text)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Общие настройки").font(.headline)
+
+            Stepper(
+                value: Binding(
+                    get: { store.minPrefixLength },
+                    set: { store.minPrefixLength = $0 }),
+                in: RukeyConfig.minPrefixLengthRange
+            ) {
+                Text("Минимальная длина префикса: \(store.minPrefixLength)")
+            }
+            .help("Слова короче этого числа не проверяются. Допустимо от 2 до 5.")
+
+            // A plain `Stepper(value:in:)` cannot skip 1 and 4, so the two
+            // arrows walk `autoLearnThresholds` one entry at a time.
+            Stepper(
+                onIncrement: { stepThreshold(up: true) },
+                onDecrement: { stepThreshold(up: false) }
+            ) {
+                Text("Порог автообучения: \(store.autoLearnThreshold)")
+            }
+            .help(
+                "Сколько отмен одной замены нужно, чтобы слово попало в «Не заменять». 0 выключает автообучение."
+            )
+
+            Toggle(
+                "Уведомлять о каждой отмене",
+                isOn: Binding(
+                    get: { store.notifyOnEveryUndo },
+                    set: { store.notifyOnEveryUndo = $0 }))
+            Toggle(
+                "Показывать всплывашку после автозамены",
+                isOn: Binding(
+                    get: { store.showCorrectionFlash },
+                    set: { store.showCorrectionFlash = $0 }))
+            Toggle(
+                "Не трогать терминалы",
+                isOn: Binding(
+                    get: { store.excludeTerminals },
+                    set: { store.excludeTerminals = $0 }))
+                .help(
+                    "Terminal, iTerm2 и другие терминалы из встроенного списка тоже пропускаются")
+            Toggle(
+                "Автозапуск при входе",
+                isOn: Binding(
+                    get: { store.launchAtLogin },
+                    set: { store.launchAtLogin = $0 }))
+                .help("Регистрирует LaunchAgent в ~/Library/LaunchAgents")
+
+            HStack {
+                Button("Открыть настройки Accessibility") {
+                    // The same pane URL the red status row sends the user to.
+                    PermissionGate().openSystemSettings()
+                }
+                Spacer()
+            }
+
+            // A failed LaunchAgent write rolled the toggle back; without this
+            // line the snap-back would be silent here (the menu logs it).
+            if let error = store.lastError {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
             Spacer()
         }
-        .padding(24)
-        .frame(minWidth: 520, minHeight: 440)
+        .padding(16)
+    }
+
+    /// Moves to the next/previous admissible threshold; a current value that is
+    /// somehow outside the list falls back to the first entry.
+    private func stepThreshold(up: Bool) {
+        let values = RukeyConfig.autoLearnThresholds
+        let index = values.firstIndex(of: store.autoLearnThreshold) ?? 0
+        let next = up ? min(index + 1, values.count - 1) : max(index - 1, 0)
+        store.autoLearnThreshold = values[next]
+    }
+}
+
+/// The `Журнал` tab: the same lines the console printed, newest last, with a
+/// level filter and a copy button.
+///
+/// `LogBuffer` has no notification API — that is a deliberate Core decision —
+/// so the tab polls through the store while it is visible: the store
+/// republishes only when the buffer's tail changed, so an idle log costs one
+/// snapshot read per second and no view update.
+private struct LogTab: View {
+    @ObservedObject var store: SettingsStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { store.showOnlyErrors },
+                        set: { store.showOnlyErrors = $0 })
+                ) {
+                    Text("Все уровни").tag(false)
+                    Text("Только ошибки").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 240)
+                Spacer()
+                Button("Копировать") { copyVisibleLines() }
+                    .disabled(store.logLines.isEmpty)
+                    .help("Скопировать видимые строки в буфер обмена")
+            }
+            List(store.logLines) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(Self.timeText(line.date))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Text(line.level.rawValue.uppercased())
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(Self.levelColor(line.level))
+                        .frame(width: 56, alignment: .leading)
+                    Text(line.text)
+                        .font(.callout)
+                        .lineLimit(3)
+                }
+            }
+        }
+        .padding(16)
+        .onAppear { store.beginLogRefresh() }
+        .onDisappear { store.endLogRefresh() }
+    }
+
+    private func copyVisibleLines() {
+        let text = store.logLines
+            .map { Self.copyText(for: $0) }
+            .joined(separator: "\n")
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// One copied line: `[14:05:33] WARN …` — the level included, so a pasted
+    /// excerpt keeps the severity the tab shows.
+    static func copyText(for line: LogLine) -> String {
+        "[\(timeText(line.date))] \(line.level.rawValue.uppercased()) \(line.text)"
+    }
+
+    static func timeText(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .standard)
+    }
+
+    static func levelColor(_ level: LogLine.Level) -> Color {
+        switch level {
+        case .debug: return .secondary
+        case .info: return .primary
+        case .warn: return .orange
+        case .error: return .red
+        }
     }
 }

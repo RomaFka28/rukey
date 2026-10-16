@@ -20,6 +20,9 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// The GUI's live settings copy; the writers keep it in sync exactly like
     /// the learning controller's writer does.
     private let state: SettingsState
+    /// The general tab's writer, owned by `AppDelegate` so the menu's
+    /// launch-at-login checkbox and the tab share one registration path.
+    private let store: SettingsStore
     private let onClose: (() -> Void)?
 
     /// Built once, on first use; `show()` reopens the same window afterwards.
@@ -29,9 +32,15 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// The applications tab's model, retained for the same reason.
     private var appList: AppListModel?
 
-    public init(engine: RukeyEngine, state: SettingsState, onClose: (() -> Void)?) {
+    public init(
+        engine: RukeyEngine,
+        state: SettingsState,
+        store: SettingsStore,
+        onClose: (() -> Void)?
+    ) {
         self.engine = engine
         self.state = state
+        self.store = store
         self.onClose = onClose
         super.init()
     }
@@ -78,7 +87,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         // Closing must not deallocate the window: `show()` reopens this one.
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
-            rootView: SettingsView(words: wordList, apps: appList))
+            rootView: SettingsView(store: store, words: wordList, apps: appList))
         window.delegate = self
         window.center()
 
