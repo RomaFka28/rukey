@@ -4,13 +4,13 @@
 
 **Goal:** Ship Rukey as a double-clickable `.app` with a menu-bar icon, a settings window, notifications and launch-at-login, while the `rukey` CLI daemon keeps working unchanged.
 
-**Architecture:** A new `RukeyGUI` executable target holds an `NSApplication` whose delegate owns a `RukeyEngine` from the engine plan. Because the event tap is installed in `.commonModes` of the main run loop, `NSApplication.run()` delivers events to it exactly as `CFRunLoopRun()` did, so no IPC and no second process exist. The engine stays in `RukeyCore` and stays UI-free; the GUI reads state from it and writes settings back through the same lock-guarded setters the settings window exposes. `LSUIElement = true` removes the Dock icon.
+**Architecture:** A new `RukeyGUI` executable target holds an `NSApplication` whose delegate owns a `RukeyEngine` from the engine plan. Because the event tap is installed in `.commonModes` of the main run loop, `NSApplication.run()` delivers events to it exactly as `CFRunLoopRun()` did, so no IPC and no second process exist. The engine stays in `RukeyCore` and stays UI-free; the GUI reads state from it and writes settings back through the same lock-guarded setters the settings window exposes. `LSUIElement = true` removes the Dock icon. Two naming notes for readers comparing this plan to spec §5's block diagram: the diagram calls the app layer `RukeyApp`, while this plan keeps `RukeyApp` as the console `rukey` binary and names the GUI target `RukeyGUI` (intentional — do not "correct" either side); and the same diagram places `AppEventHub` inside the `RukeyCore` block (`ObservableObject для UI`), which is why the hub lives in core even though the core is otherwise UI-free.
 
 **Tech Stack:** Swift 6.0, SwiftPM, AppKit + SwiftUI, `UNUserNotificationCenter`, `codesign`, no third-party dependencies.
 
 **Spec:** `docs/superpowers/specs/2026-10-14-rukey-gui-design.md` — sections 6.5, 8, 9.4 phases 5–7, 10.
 
-**Prerequisite:** `docs/superpowers/plans/2026-10-14-rukey-engine.md` must be complete and `swift test` green. Every task here consumes `RukeyEngine` from its Task 8.
+**Prerequisite:** `docs/superpowers/plans/2026-10-14-rukey-engine.md` must be complete and `swift test` green. Every task here consumes `RukeyEngine` and `AppEventHub` from its Tasks 8 and 9.
 
 ## Global Constraints
 
@@ -120,7 +120,7 @@ Expected: shows the Rukey certificate, not `(adhoc)`.
 Run the app once from `dist/Rukey.app`, grant Accessibility in System Settings, quit it, then:
 
 Run: `bash tools/package-app.sh && echo rebuilt`
-Expected: after relaunching, `System Settings → Privacy & Security → Accessibility` still lists Rukey as enabled. If the grant vanished, the identity is not stable — fix the script before continuing. Record the observed result in the commit message.
+Expected: after relaunching, `System Settings → Privacy & Security → Accessibility` still lists Rukey as enabled. If the grant vanished, the identity is not stable — fix the script before continuing. Record the observed result in the commit message. **Owner-performed:** the grant, the relaunch and the observation need a human at the keyboard; an agent reports this step as *unverified*, never as passed.
 
 - [ ] **Step 5: Commit**
 
@@ -139,9 +139,10 @@ git push
 - Create: `Sources/RukeyGUI/main.swift`
 - Create: `Sources/RukeyGUI/AppDelegate.swift`
 - Create: `Sources/RukeyGUI/PermissionGate.swift`
+- Create: `Sources/RukeyGUI/SettingsState.swift`
 
 **Interfaces:**
-- Consumes: `RukeyEngine` from the engine plan, `EventTapManager.checkAccessibilityPermissions(prompt:)`.
+- Consumes: `RukeyEngine` and `AppEventHub` from the engine plan, `RukeyConfig` (the launch-time load), `EventTapManager.checkAccessibilityPermissions(prompt:)`.
 - Produces:
 
 ```swift
@@ -162,6 +163,19 @@ public final class PermissionGate {
     public func stop()
     @discardableResult
     public func openSystemSettings() -> Bool
+}
+
+@MainActor
+public final class SettingsState {
+    public init(config: RukeyConfig)
+    public var minPrefixLength: Int
+    public var autoLearnThreshold: Int
+    public var notifyOnEveryUndo: Bool
+    public var showCorrectionFlash: Bool
+    public var excludeTerminals: Bool
+    public var launchAtLogin: Bool
+    public var excludedWords: [String]
+    public var excludedBundleIDs: Set<String>
 }
 ```
 
@@ -226,8 +240,33 @@ Expected: FAIL — `cannot find 'PermissionGate' in scope`.
 
 - `private var engine: RukeyEngine?` — built lazily on a background-safe path, because `RukeyEngine.init` loads ~1.1 MB of dictionaries
 - `private let gate = PermissionGate()`
+- `private let state: SettingsState` — the GUI's single live copy of the settings, initialised from the launch-time `RukeyConfig.load`. Everything downstream reads current values from it; never capture a `RukeyConfig` snapshot in a long-lived closure (the CLI's `{ config.notifyOnEveryUndo }` is fine for one-shot flags and wrong for a GUI whose settings change at runtime).
+- `private var hub: AppEventHub?` — **retained**: nothing else holds it.
 - `func applicationDidFinishLaunching(_:)` — starts the gate, then observes it. **The tap is not started here.**
-- When `gate.state` becomes `.granted`, build the engine and call `engine.tapManager.start()` exactly once. If `start()` returns false, report it through the status item rather than exiting.
+- When `gate.state` becomes `.granted`, build the engine, then the controller, then the hub — on the main actor, in that order (none of the three is `Sendable`):
+
+```swift
+// Both come from `init`'s single launch-time load; `state` mirrors it live.
+engine = try RukeyEngine(config: initialConfig, verbose: false)
+let learningController = UndoLearningController(
+    strikeStore: engine.strikeStore,
+    wordFilter: engine.wordFilter,
+    thresholdProvider: { state.autoLearnThreshold },
+    notifyProvider: { state.notifyOnEveryUndo },
+    configWriter: { words in
+        // Re-read before mutating — the writer may not be the only editor.
+        var current = RukeyConfig.load(
+            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
+        current.excludedWords = words.sorted()
+        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
+        state.excludedWords = current.excludedWords
+    })
+hub = AppEventHub(tapManager: engine.tapManager, learningController: learningController)
+```
+
+The hub's initialiser owns all five hooks (the four `tapManager.on…` callbacks and `learningController.onNotice`) — do **not** assign any of them by hand: Task 9's rule is exactly one owner per process, and the console keeps its own callbacks and no hub. `thresholdProvider` and `notifyProvider` read live values through `state`, never a captured snapshot.
+
+- Call `engine.tapManager.start()` exactly once, after the hub exists. If `start()` returns false, report it through the status item rather than exiting.
 - `func applicationShouldTerminate(_:)` — call `engine.tapManager.stop()` and return `.terminateNow`
 
 The critical behaviour: with no grant the app stays alive, shows a red status, and starts working the moment the grant appears. There must be no `exit(1)` anywhere.
@@ -265,7 +304,7 @@ git push
 - Create: `Sources/RukeyGUI/StatusItemController.swift`
 
 **Interfaces:**
-- Consumes: `RukeyEngine`, `PermissionGate`, `UndoLearningController`.
+- Consumes: `RukeyEngine`, `PermissionGate`, `UndoLearningController`, `AppEventHub` (`lastLearned`).
 - Produces:
 
 ```swift
@@ -359,7 +398,7 @@ Expected: FAIL — `cannot find 'StatusMenuModel' in scope`.
 
 - [ ] **Step 6: Wire learning events into the banner**
 
-Subscribe to the engine's undo callback so that when `UndoLearningController` writes its `Запомнено:` line at `.warn` level, the status item shows the banner and briefly swaps the icon for an alternate image for about a second, then restores it. Read the new line from `LogBuffer.shared` rather than duplicating the string.
+Observe `AppEventHub.lastLearned` (the hub Task 2 retains) — the value carries `prefix`/`converted`, the same `LearningNotice` the `Запомнено:` log line is built from, so the two can never disagree. When it changes, the status item shows the banner and briefly swaps the icon for an alternate image for about a second, then restores it. Do **not** read `LogBuffer.shared` and do not sniff log strings; convert the hub value into `StatusMenuModel.learningBanner` in the controller that owns the hub.
 
 - [ ] **Step 7: Build and verify**
 
@@ -387,7 +426,7 @@ git push
 - Create: `Sources/RukeyGUI/SettingsView.swift`
 
 **Interfaces:**
-- Consumes: `WordFilter`, `CustomDictionary`, `RukeyConfig` write path, `AppDelegate`.
+- Consumes: `WordFilter`, `CustomDictionary`, `StrikeStore`, `RukeyConfig` write path, `SettingsState`, `AppDelegate`.
 - Produces:
 
 ```swift
@@ -412,7 +451,8 @@ final class WordListModelTests: XCTestCase {
         let filter = WordFilter()
         let dictionary = CustomDictionary(fileURL: temporaryURL())
         let model = WordListModel(
-            filter: filter, dictionary: dictionary, writer: { _ in })
+            filter: filter, dictionary: dictionary,
+            strikeStore: StrikeStore(fileURL: temporaryURL()), writer: { _ in })
         model.addExcluded("ghbdtn")
         XCTAssertTrue(filter.isExcluded("ghbdtn"))
     }
@@ -421,7 +461,7 @@ final class WordListModelTests: XCTestCase {
         let filter = WordFilter()
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
-            writer: { _ in })
+            strikeStore: StrikeStore(fileURL: temporaryURL()), writer: { _ in })
         model.addExcluded("   ")
         XCTAssertTrue(filter.isEmpty)
     }
@@ -430,7 +470,7 @@ final class WordListModelTests: XCTestCase {
         let filter = WordFilter(words: ["ghbdtn"])
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
-            writer: { _ in })
+            strikeStore: StrikeStore(fileURL: temporaryURL()), writer: { _ in })
         model.addExcluded("ghbdtn")
         XCTAssertEqual(filter.words, ["ghbdtn"])
     }
@@ -440,6 +480,7 @@ final class WordListModelTests: XCTestCase {
         var written: [Set<String>] = []
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
+            strikeStore: StrikeStore(fileURL: temporaryURL()),
             writer: { written.append($0) })
         model.removeExcluded("ghbdtn")
         XCTAssertTrue(filter.isEmpty)
@@ -451,6 +492,7 @@ final class WordListModelTests: XCTestCase {
         var written: [Set<String>] = []
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
+            strikeStore: StrikeStore(fileURL: temporaryURL()),
             writer: { written.append($0) })
         model.addExcluded("ghbdtn")
         model.addExcluded("hello")
@@ -462,17 +504,32 @@ final class WordListModelTests: XCTestCase {
         var written: [Set<String>] = []
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
+            strikeStore: StrikeStore(fileURL: temporaryURL()),
             writer: { written.append($0) })
         model.removeExcluded("ghb")
         XCTAssertTrue(filter.isEmpty)
         XCTAssertEqual(written.last, [])
     }
 
+    func testRemovingALearnedWordClearsItsStrikes() {
+        let strikes = StrikeStore(fileURL: temporaryURL())
+        _ = strikes.registerUndo(key: "ghb")
+        let filter = WordFilter(words: ["ghb"])
+        let model = WordListModel(
+            filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
+            strikeStore: strikes, writer: { _ in })
+        model.removeExcluded("ghb")
+        XCTAssertEqual(strikes.strikes(for: "ghb"), 0)
+        XCTAssertEqual(strikes.registerUndo(key: "ghb"), 1,
+                       "re-learning must start from a fresh count, not continue at the old one")
+    }
+
     func testTaughtWordsGoToTheCustomDictionaryNotTheFilter() {
         let filter = WordFilter()
         let dictionary = CustomDictionary(fileURL: temporaryURL())
         let model = WordListModel(
-            filter: filter, dictionary: dictionary, writer: { _ in })
+            filter: filter, dictionary: dictionary,
+            strikeStore: StrikeStore(fileURL: temporaryURL()), writer: { _ in })
         model.addTaught("абракадабра")
         XCTAssertTrue(dictionary.contains("абракадабра"))
         XCTAssertTrue(filter.isEmpty)
@@ -489,13 +546,13 @@ Expected: FAIL — `cannot find 'WordListModel' in scope`.
 
 - [ ] **Step 3: Implement `WordListModel`**
 
-`@MainActor` final class holding the filter, the dictionary and a `writer: (Set<String>) -> Void`. `addExcluded` trims, drops blanks and duplicates, unions into `wordFilter`, then calls `writer` with the full new set — never with a delta. `removeExcluded` removes and writes the full remaining set. `addTaught` and `removeTaught` mirror this against the dictionary. This is what makes a learned word's removal survive a restart: the writer persists the whole list, not the change.
+`@MainActor` final class holding the filter, the dictionary, a required `strikeStore: StrikeStore` (never defaulted — a default would point every test at the real `learned.json`) and a `writer: (Set<String>) -> Void`. `addExcluded` trims, drops blanks and duplicates, unions into `wordFilter`, then calls `writer` with the full new set — never with a delta. `removeExcluded` removes the word, calls `strikeStore.removeAllKeys(for:)`, and writes the full remaining set: without the strike reset a removed word can never be re-learned, because its count stays at the old threshold and the learning condition is an exact match. `addTaught` and `removeTaught` mirror this against the dictionary. This is what makes a learned word's removal survive a restart: the writer persists the whole list, not the change. In the app the writer **re-reads** (`RukeyConfig.load`), merges the new full set into that fresh copy, and persists it with `RukeyConfig.write` (the one writer), keeping `state.excludedWords` in sync.
 
 - [ ] **Step 4: Implement the settings window**
 
 `SettingsWindowController` creates one `NSWindow` with `.titled, .closable, .miniaturizable`, `isReleasedWhenClosed = false`, and hosts a `TabView` in an `NSHostingView`. Four tabs, in this order: `Слова`, `Приложения`, `Общее`, `Журнал`.
 
-The `Слова` tab has two sections. `Не заменять`: a text field that submits on Return, a list with per-row delete buttons, and `Очистить всё`. Each row shows the stored form and, when known, its conversion — `ghb → при`. `Мои слова`: the same shape over the custom dictionary.
+The `Слова` tab has two sections. `Не заменять`: a text field that submits on Return, a list with per-row delete buttons, and `Очистить всё`. Each row shows the stored form and, when known, its conversion — `ghb → при`. `Мои слова`: the same shape over the custom dictionary. The model's `writer` goes through the re-read-merge-`RukeyConfig.write` path from Step 3 — never a snapshot write — and keeps `state.excludedWords` in sync.
 
 - [ ] **Step 5: Verify**
 
@@ -534,7 +591,7 @@ public final class AppPicker {
     public init(searchPaths: [URL] = AppPicker.defaultSearchPaths)
     public static let defaultSearchPaths: [URL]
     public func reload() async -> [InstalledApp]
-    public func search(_ query: String, in apps: [InstalledApp]) -> [InstalledApp]
+    public nonisolated static func search(_ query: String, in apps: [InstalledApp]) -> [InstalledApp]
 }
 ```
 
@@ -589,11 +646,11 @@ Expected: FAIL — `cannot find 'AppPicker' in scope`.
 
 - [ ] **Step 3: Implement the picker**
 
-`defaultSearchPaths` is `/Applications`, `/System/Applications` and `~/Applications`. `reload()` enumerates each path for `.app` bundles, reads `CFBundleIdentifier` and `CFBundleDisplayName` falling back to the directory name, drops bundles with no identifier, de-duplicates by identifier keeping the first, and sorts by localised name. It runs off the main actor and returns to it. `search` is a pure function on the returned array — it must not touch disk, so it stays synchronous and testable.
+`defaultSearchPaths` is `/Applications`, `/System/Applications` and `~/Applications`. `reload()` enumerates each path for `.app` bundles, reads `CFBundleIdentifier` and `CFBundleDisplayName` falling back to the directory name, drops bundles with no identifier, de-duplicates by identifier keeping the first, and sorts by localised name. It runs off the main actor and returns to it; it is `async`, so the harness cannot run a test through it — its enumeration and sorting get reading-only verification plus Step 6's manual check. `search` is a pure function on the returned array — it must not touch disk — and is declared `nonisolated static`, because a `static` member of a `@MainActor` class is main-actor-isolated under Swift 6 and the tests (plain `XCTestCase` methods) could not call it synchronously. Keep the tests exactly as written.
 
 - [ ] **Step 4: Build the applications tab**
 
-A `Добавить приложение` button opens a sheet listing `AppPicker` results with a search field. Selecting one adds its bundle identifier to `secureMonitor.customExcludedBundleIDs` and writes the union to `exclude.json`. The current exclusions are listed below with delete buttons. A checkbox mirrors `excludeTerminals`.
+A `Добавить приложение` button opens a sheet listing `AppPicker` results with a search field. Selecting one adds its bundle identifier to `secureMonitor.customExcludedBundleIDs`, mirrors it into `SettingsState.excludedBundleIDs`, and persists through the same re-read-merge-`RukeyConfig.write` path the words tab uses. The current exclusions are listed below with delete buttons. A checkbox mirrors `excludeTerminals` (same save path, into `SettingsState` too).
 
 - [ ] **Step 5: Verify the settings apply without a restart**
 
@@ -621,7 +678,7 @@ git push
 - Create: `Sources/RukeyGUI/SettingsStore.swift`
 
 **Interfaces:**
-- Consumes: `Detector.minPrefixLength` setter, `RukeyConfig`, `LogBuffer`, `LaunchAgents`.
+- Consumes: `Detector.minPrefixLength` setter, `RukeyConfig` (`load`/`write`/`configFileURL`), `SettingsState`, `LogBuffer`, `LaunchAgents`.
 - Produces:
 
 ```swift
@@ -629,16 +686,23 @@ git push
 public final class SettingsStore {
     public init(
         engine: RukeyEngine,
+        state: SettingsState,
         configFileURL: URL,
-        launchAgentFileURL: URL = SettingsStore.defaultLaunchAgentFileURL
+        launchAgentFileURL: URL = SettingsStore.defaultLaunchAgentFileURL,
+        logBuffer: LogBuffer = .shared
     )
     public static let defaultLaunchAgentFileURL: URL
+    public let engine: RukeyEngine
+    public let state: SettingsState
     public var minPrefixLength: Int { get set }
     public var autoLearnThreshold: Int { get set }
     public var notifyOnEveryUndo: Bool { get set }
     public var showCorrectionFlash: Bool { get set }
     public var excludeTerminals: Bool { get set }
     public var launchAtLogin: Bool { get set }
+    public var launchAgentFileURLOverride: URL { get set }
+    public var showOnlyErrors: Bool { get set }
+    public private(set) var lastError: String? { get }
     public var logLines: [LogLine] { get }
 }
 ```
@@ -654,20 +718,25 @@ import XCTest
 
 @MainActor
 final class SettingsStoreTests: XCTestCase {
-    private func makeStore() throws -> (SettingsStore, URL) {
+    private func makeStore(logBuffer: LogBuffer = LogBuffer()) throws -> (SettingsStore, URL) {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("rukey-settings-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let url = base.appendingPathComponent("com.roman.rukey.plist")
+        let config = RukeyConfig.load(
+            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false,
+            configFileURL: base.appendingPathComponent("exclude.json"))
         let engine = try RukeyEngine(
-            config: RukeyConfig.load(
-                excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false,
-                configFileURL: base.appendingPathComponent("exclude.json")),
+            config: config,
             verbose: false,
             customDictionaryFileURL: base.appendingPathComponent("custom.json"),
             strikeStoreFileURL: base.appendingPathComponent("learned.json")
         )
-        return (SettingsStore(engine: engine, configFileURL: base.appendingPathComponent("exclude.json"), launchAgentFileURL: url), url)
+        let store = SettingsStore(
+            engine: engine, state: SettingsState(config: config),
+            configFileURL: base.appendingPathComponent("exclude.json"),
+            launchAgentFileURL: url, logBuffer: logBuffer)
+        return (store, url)
     }
 
     func testEnablingLaunchAtLoginWritesALaunchAgent() throws {
@@ -691,9 +760,10 @@ final class SettingsStoreTests: XCTestCase {
     }
 
     func testLogFilterShowsOnlyErrors() throws {
-        let (store, _) = try makeStore()
-        LogBuffer.shared.log("noise", level: .debug)
-        LogBuffer.shared.log("boom", level: .error)
+        let buffer = LogBuffer()
+        let (store, _) = try makeStore(logBuffer: buffer)
+        buffer.log("noise", level: .debug)
+        buffer.log("boom", level: .error)
         store.showOnlyErrors = true
         XCTAssertEqual(store.logLines.map(\.text), ["boom"])
     }
@@ -715,11 +785,11 @@ Expected: FAIL — `cannot find 'SettingsStore' in scope`.
 
 - [ ] **Step 3: Implement `SettingsStore`**
 
-Each property is a computed property that writes through to the engine **and** the config file in the same call, so the two can never drift. `minPrefixLength` also writes to `detector.minPrefixLength`, clamped to 2...5. `launchAtLogin` writes a `~/Library/LaunchAgents/com.roman.rukey.plist` containing `Label`, `ProgramArguments` pointing at the bundle's `Contents/MacOS/Rukey`, and `RunAtLoad`; on any write error it rolls the checkbox back, stores `lastError`, and logs a `.warn`. Anti-goal 2 forbids a checkbox that lies.
+Each property is a computed property that writes through in one call to the live `SettingsState`, the engine, and the config file — and reads its current value from `SettingsState`, never from `engine.config` (an immutable launch-time snapshot). Because two tabs can each hold a stale base, every file write **re-reads** (`RukeyConfig.load`) immediately before mutating and hands the whole struct to `RukeyConfig.write`; the writer cannot fix a stale base. `minPrefixLength` also writes to `detector.minPrefixLength`, clamped to 2...5. `launchAtLogin` writes a `~/Library/LaunchAgents/com.roman.rukey.plist` containing `Label`, `ProgramArguments` pointing at the bundle's `Contents/MacOS/Rukey`, and `RunAtLoad`; on any write error it rolls the checkbox back, stores `lastError`, and logs a `.warn`. `logLines` reads the injected `logBuffer` (`LogBuffer.shared` by default, a per-test buffer in tests, so one test's lines cannot leak into another's filter). Anti-goal 2 forbids a checkbox that lies.
 
 - [ ] **Step 4: Build the general and log tabs**
 
-`Общее`: a stepper for `minPrefixLength`, a stepper for `autoLearnThreshold` accepting 0, 2, 3 and 5, a toggle for `notifyOnEveryUndo`, a toggle for `showCorrectionFlash`, a toggle for `excludeTerminals`, a toggle for `launchAtLogin`, and a button opening the Accessibility pane. `Журнал`: a `List` over `LogBuffer.shared.lines()`, newest last, a `Picker` for all levels versus errors only, and a `Копировать` button.
+`Общее`: a stepper for `minPrefixLength`, a stepper for `autoLearnThreshold` accepting 0, 2, 3 and 5, a toggle for `notifyOnEveryUndo`, a toggle for `showCorrectionFlash`, a toggle for `excludeTerminals`, a toggle for `launchAtLogin`, and a button opening the Accessibility pane. `Журнал`: a `List` over `store.logLines` (the injected buffer — `LogBuffer.shared` in the app), newest last, a `Picker` for all levels versus errors only, and a `Копировать` button.
 
 - [ ] **Step 5: Verify**
 
@@ -743,7 +813,7 @@ git push
 - Create: `Sources/RukeyGUI/CorrectionFlash.swift`
 
 **Interfaces:**
-- Consumes: `LogBuffer`, `UndoLearningController` log lines, `RukeyConfig.showCorrectionFlash`.
+- Consumes: `AppEventHub` (`lastCorrection`, `lastUndo`, `lastLearned`) and the live `SettingsState` (`showCorrectionFlash`).
 - Produces:
 
 ```swift
@@ -759,6 +829,7 @@ public final class NotificationService {
 @MainActor
 public final class CorrectionFlash {
     public static let duration: TimeInterval = 1.5
+    public nonisolated static func text(original: String, converted: String) -> String
     public init(size: CGSize = CGSize(width: 220, height: 54))
     public func show(_ text: String)
     public func hide()
@@ -800,7 +871,13 @@ Expected: FAIL — `cannot find 'CorrectionFlash' in scope`.
 
 - [ ] **Step 5: Wire both to the engine**
 
-On each engine correction event, if `showCorrectionFlash` is on, call `flash.show(...)`. On the `.warn` line `Запомнено: …`, fire the learned notice and the icon flash from Task 3. On the `Отменено: …` info line, fire the undo notice only when `notifyOnEveryUndo` is on.
+Drive everything from `AppEventHub`'s published values instead of sniffing `LogBuffer.shared`:
+
+- `hub.lastCorrection` — when a new correction lands and the live `state.showCorrectionFlash` is on, call `flash.show(CorrectionFlash.text(original:converted:))` (the tested formatter; do not re-implement the string).
+- `hub.lastLearned` — fire the learned notice; the icon flash is Task 3's.
+- `hub.lastUndo` — fire the undo notice, carrying `prefix`/`converted`/`count`/`threshold`.
+
+The undo notice is already gated upstream: `UndoLearningController` emits `.undo` only when the live `notifyProvider()` (Task 2's `state.notifyOnEveryUndo`) is true, exactly like the console's own `Отменено:` line. Do not gate `hub.lastUndo` a second time — or, if you do, say plainly in the service's header that it is a second gate; a hidden second gate is how the menu and the notifications drift apart.
 
 - [ ] **Step 6: Verify**
 
@@ -842,7 +919,7 @@ Expected: a signed `dist/Rukey.app` with the Rukey identity, not `(adhoc)`.
 
 - [ ] **Step 3: Manual pass over every spec behaviour**
 
-Work through this list and record each result in the commit message. Every line must pass before this task closes.
+Work through this list and record each result in the commit message. Every line must pass before this task closes. **Owner-performed:** the whole pass needs a live GUI session, a real Accessibility grant and a human at the keyboard — an agent executing this plan reports these 17 rows as *unverified* and hands the owner exactly this table as the checklist.
 
 | # | Check |
 |---|---|
