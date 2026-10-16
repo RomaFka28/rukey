@@ -1006,8 +1006,10 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
     }
 
     func testTaughtLatinWordSurvivesAtTheWordBoundary() {
-        // The same widening on the boundary path, mirroring the `руддщ` case on
-        // the English side.
+        // Pins the English branch's `fullWord` `isCurrentValid` widening, the
+        // mirror of the Russian `руддщ` boundary case: `ghbdtn` is not in
+        // `enTrie`, so nothing but the widening makes the taught word valid at the
+        // boundary — without it the flip fires and returns `привет`.
         let (detector, _) = makeTaughtDetector(words: ["ghbdtn"])
         XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
     }
@@ -1030,7 +1032,10 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
         // a *file* where the directory must be created, so the save throws.
         let blocker = FileManager.default.temporaryDirectory
             .appendingPathComponent("blocker-\(UUID().uuidString)")
-        try? Data().write(to: blocker)
+        // The blocker must exist, or the scenario silently changes: a failed write
+        // would leave no file, `createDirectory` would then succeed and the save
+        // would land, failing the test for the wrong reason.
+        XCTAssertTrue(FileManager.default.createFile(atPath: blocker.path, contents: Data()))
         let buffer = LogBuffer()
         let dictionary = CustomDictionary(
             fileURL: blocker.appendingPathComponent("custom.json"), logBuffer: buffer)
@@ -1046,7 +1051,7 @@ Expected: FAIL — `cannot find 'CustomDictionary' in scope`.
 
 - [ ] **Step 3: Implement `CustomDictionary`**
 
-Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie` construction as `WordFilter` from Task 3 Step 4, trimmed and dropping empty words, plus persistence. Expose both `contains` (exact, via `Trie.contains`) and `isPrefixOfKnown` (via `Trie.hasPrefix`) — the detector needs prefix membership on the on-the-fly path, where it is asked whether `pfj` is the start of a taught word rather than whether it is one. End the file with a newline; at `4ac46bc` it was the only file in the repository without one.
+Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie` construction as `WordFilter` from Task 3 Step 4, trimmed and dropping empty words, plus persistence. Expose both `contains` (exact, via `Trie.contains`) and `isPrefixOfKnown` (via `Trie.hasPrefix`) — the detector needs prefix membership on the on-the-fly path, where it is asked whether `pfj` is the start of a taught word rather than whether it is one. End the file with a newline; it lacked one at `4ac46bc` (four files under `docs/` still do, and stay that way).
 
 Like `WordFilter`, this is a `@unchecked Sendable` class and carries the attribute's justification in a comment, because the Global Constraints require one: the lock guards both stored properties, the pair is only ever swapped together, and the published trie is never mutated afterwards, so a reader cannot observe a trie that disagrees with its backing word set.
 
@@ -1087,9 +1092,15 @@ before the trie work, per Task 3.
 
 Take `contains`, not `isPrefixOfKnown`: this is a complete-token path, exactly like the run path's boundary arm, and those two must agree about the same typing. Adding an `isPrefixOfKnown` gate next to the filter gate would make the punctuated path *stricter* than the boundary path — with `ghbdtnabc` taught, `ghbdtn` converts but `ghbdtn!` would be blocked — which is a fresh instance of the cross-path disagreement Review Focus #5 forbids. Prefix protection belongs on the on-the-fly arm only, where the word is still being typed. The pair of tests above pins both holes: with `ghbdtn` taught, `ghbdtn!` must stay `ghbdtn!`; and a taught word's Latin typing must still convert once a comma follows it.
 
-**One lookup, not two.** On the on-the-fly path `customDictionary.isPrefixOfKnown(converted)` is the right arm of `isConvertedValid` and is computed a second time by the junk-gate waiver — two lock acquisitions and two trie walks for one answer, on the hottest path in the product. Hoist it in both branches:
+**One lookup, not two.** On the on-the-fly path `customDictionary.isPrefixOfKnown(converted)` is needed by both `isConvertedValid` and the junk-gate waiver, and computed separately the two sites can ask the same question twice in one decision. Hoist it in both branches so one answer serves both uses: the hoisted call is then paid once on every on-the-fly decision, including the ones the `||` would have short-circuited; the saving is the duplicate call plus one snapshot of the taught words shared by both uses. The comment above it must state exactly that and not claim a per-keystroke saving; the version at `d0907ad` did, which is the one thing the hoist does not do:
 
 ```swift
+            // One lookup, reused by the on-the-fly arm of `isConvertedValid` and the
+            // junk-gate waiver. Apart, the two uses could ask the same question twice
+            // in one decision and could read different snapshots of the taught words;
+            // together it is one lookup on every on-the-fly decision. The
+            // `fullWord ? false` arm keeps the boundary path from gaining a lookup it
+            // never had.
             let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
             let isConvertedValid = fullWord
                 ? enTrie.contains(converted) || customDictionary.contains(converted)
