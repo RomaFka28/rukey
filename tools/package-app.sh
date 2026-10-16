@@ -10,8 +10,8 @@
 #   5. print the resulting bundle path
 #
 # PRODUCT_NAME selects the executable product that becomes the app's main
-# binary. Until the RukeyGUI target exists (GUI plan Task 2 adds it) that is
-# the console `rukey` product; Task 2 flips this to "RukeyGUI".
+# binary: the GUI target added by GUI plan Task 2. The console `rukey`
+# product stays CLI-only and is never packaged.
 #
 # Resource bundle: Package.swift declares `.process("Resources")` for the
 # RukeyCore target. SwiftPM turns that into the compiled bundle
@@ -30,7 +30,7 @@
 #
 set -euo pipefail
 
-PRODUCT_NAME="rukey"          # → "RukeyGUI" once GUI Task 2 adds that target
+PRODUCT_NAME="RukeyGUI"
 APP_NAME="Rukey"
 RESOURCE_BUNDLE_NAME="Rukey_RukeyCore.bundle"
 IDENTITY_NAME="Rukey Local Signing"

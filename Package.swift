@@ -26,9 +26,18 @@ let package = Package(
             name: "RukeyMeasure",
             dependencies: ["RukeyCore"]
         ),
+        .executableTarget(
+            name: "RukeyGUI",
+            dependencies: ["RukeyCore"],
+            exclude: ["Resources"]
+        ),
         .testTarget(
             name: "RukeyCoreTests",
             dependencies: ["RukeyCore"]
+        ),
+        .testTarget(
+            name: "RukeyGUITests",
+            dependencies: ["RukeyGUI"]
         ),
     ]
 )
