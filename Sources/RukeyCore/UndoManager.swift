@@ -6,39 +6,30 @@ public struct LastCorrectionState: Sendable {
     public let originalLanguage: Language
     public let targetLanguage: Language
     public let appendedTail: String
-    public let timestamp: Date
-    public let timestampUptime: TimeInterval
 
     public init(
         originalText: String,
         convertedText: String,
         originalLanguage: Language,
         targetLanguage: Language,
-        appendedTail: String = "",
-        timestamp: Date = Date(),
-        timestampUptime: TimeInterval = ProcessInfo.processInfo.systemUptime
+        appendedTail: String = ""
     ) {
         self.originalText = originalText
         self.convertedText = convertedText
         self.originalLanguage = originalLanguage
         self.targetLanguage = targetLanguage
         self.appendedTail = appendedTail
-        self.timestamp = timestamp
-        self.timestampUptime = timestampUptime
     }
 }
 
 public final class RukeyUndoManager: @unchecked Sendable {
-    private var lastState: LastCorrectionState?
-    private let lock = NSLock()
-    public let maxUndoWindowSeconds: TimeInterval
-    /// Injected monotonic clock for testability (defaults to system uptime).
-    private let now: @Sendable () -> TimeInterval
+    public static let maxTailLength = 64
 
-    public init(maxUndoWindowSeconds: TimeInterval = 1.2, now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
-        self.maxUndoWindowSeconds = maxUndoWindowSeconds
-        self.now = now
-    }
+    private var lastState: LastCorrectionState?
+    private var lastUndoneState: (original: String, converted: String)?
+    private let lock = NSLock()
+
+    public init() {}
 
     /// Records a newly applied correction.
     public func recordCorrection(_ decision: CorrectionDecision, appendedTail: String = "") {
@@ -48,23 +39,44 @@ public final class RukeyUndoManager: @unchecked Sendable {
                 convertedText: decision.convertedText,
                 originalLanguage: decision.sourceLanguage,
                 targetLanguage: decision.targetLanguage,
-                appendedTail: appendedTail,
-                timestamp: Date(),
-                timestampUptime: now()
+                appendedTail: appendedTail
             )
         }
     }
 
-    private func isFresh(_ state: LastCorrectionState, at uptime: TimeInterval) -> Bool {
-        uptime - state.timestampUptime <= maxUndoWindowSeconds
+    /// Grows the tail of characters typed after the latest correction.
+    /// Beyond `maxTailLength` UTF-16 units the undo is dropped rather than
+    /// letting an unbounded erase reach into text the user has moved past.
+    public func appendToTail(_ text: String) {
+        lock.withLock {
+            guard let state = lastState else { return }
+            let appendedTail = state.appendedTail + text
+            if state.convertedText.utf16EraseLength + appendedTail.utf16EraseLength > Self.maxTailLength {
+                lastState = nil
+                return
+            }
+            lastState = LastCorrectionState(
+                originalText: state.originalText,
+                convertedText: state.convertedText,
+                originalLanguage: state.originalLanguage,
+                targetLanguage: state.targetLanguage,
+                appendedTail: appendedTail
+            )
+        }
     }
 
     /// Checks if an undo action is available.
     public var canUndo: Bool {
         return lock.withLock {
-            guard let state = lastState else { return false }
-            return isFresh(state, at: now())
+            lastState != nil
         }
+    }
+
+    /// The most recently undone pair, needed by the learning logic in Task 7.
+    /// `onOptionUndo` carries only the language and the restored text, so the
+    /// converted side has to come from here.
+    public var lastUndone: (original: String, converted: String)? {
+        lock.withLock { lastUndoneState }
     }
 
     public struct UndoCalculation: Equatable, Sendable {
@@ -79,16 +91,13 @@ public final class RukeyUndoManager: @unchecked Sendable {
         }
     }
 
-    /// Atomically checks freshness, computes undo, and consumes the state.
+    /// Atomically computes undo and consumes the state.
     /// Single-lock design fixes the previous TOCTOU: `canUndo` + `calculateUndo`
     /// checked the timestamp in two separate locks, so expiry could slip between them.
     public func calculateUndo() -> UndoCalculation? {
         return lock.withLock {
             guard let state = lastState else { return nil }
-            guard isFresh(state, at: now()) else {
-                lastState = nil
-                return nil
-            }
+            lastUndoneState = (original: state.originalText, converted: state.convertedText)
             lastState = nil
             // NOTE: erase length is UTF-16 units (`utf16EraseLength`), matching
             // FixEngine.sendBackspace / insertUnicodeString. `.count` (graphemes)

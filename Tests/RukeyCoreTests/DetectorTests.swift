@@ -380,4 +380,25 @@ final class DetectorTests: XCTestCase {
         dictionary.replaceAll(with: ["заозкздзаоз"])
         XCTAssertTrue(buffer.lines().contains { $0.level == .warn })
     }
+
+    func testSecondCorrectionInOneWordSupersedesTheFirst() {
+        // An on-the-fly flip, then a boundary correction: the manager keeps only
+        // the latest, so one Option tap undoes "тест", never both.
+        let detector = makeDetector(minTargetCompletions: 2)
+        let first = detector.evaluate(buffer: "ghb", currentLanguage: .english)
+        let second = detector.evaluateFullWord(buffer: "ntcn", currentLanguage: .english)
+        XCTAssertEqual(first?.convertedText, "при")
+        XCTAssertEqual(second?.convertedText, "тест")
+        XCTAssertNotEqual(first?.originalText, second?.originalText)
+        // The three assertions above only show the detector produces two
+        // decisions with different originals. The review focus is about the
+        // consequence: the manager ends up holding the second, so one Option tap
+        // undoes "тест" and cannot also undo "при". If either decision were nil
+        // the loop would record fewer and the assertion below would fail too.
+        let manager = RukeyUndoManager()
+        for decision in [first, second].compactMap({ $0 }) {
+            manager.recordCorrection(decision)
+        }
+        XCTAssertEqual(manager.calculateUndo()?.textToRestore, "ntcn")
+    }
 }

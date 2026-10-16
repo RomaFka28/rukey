@@ -339,9 +339,9 @@ public final class EventTapManager: @unchecked Sendable {
     // (IME, dead keys) must stay in sync with what reaches the screen.
     bufferManager.append(contentsOf: typedString)
 
-    // Typing new characters after a correction cancels the undo opportunity.
+    // Typing new characters after a correction extends the undo's erase tail.
     if undoManager.canUndo {
-      undoManager.clear()
+      undoManager.appendToTail(typedString)
     }
     // On-the-fly detection on current buffer
     let currentBuffer = bufferManager.currentBuffer
