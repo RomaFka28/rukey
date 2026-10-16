@@ -85,7 +85,7 @@ Five input classes the spec implies but does not spell out. Each is pinned by a 
 
 **Interfaces:**
 - Consumes: nothing; this is the first task.
-- Produces: `TestDictionaries.enTrie`, `TestDictionaries.ruTrie`, `TestDictionaries.makeTrie(_ words: [String]) -> Trie` — used by Tasks 2, 3, 4, 5. Small fixed English and Russian word lists (10–20 words each) covering both real conversions (`ghbdtn`→`привет`, `hello`→`руддщ`, `ncnt`→`тест`) and a junk-backed prefix that exercises `minTargetCompletions` (`beb` exists only behind `bebra`).
+- Produces: `TestDictionaries.enTrie`, `TestDictionaries.ruTrie`, `TestDictionaries.makeTrie(_ words: [String]) -> Trie` — used by Tasks 2, 3, 4, 5. Small fixed English and Russian word lists (10–20 words each) covering both real conversions (`ghbdtn`→`привет`, `hello`→`руддщ`, `ntcn`→`тест`) and a junk-backed prefix that exercises `minTargetCompletions` (`beb` exists only behind `bebra`).
 
 - [ ] **Step 1: Add the test target**
 
@@ -707,9 +707,9 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
     func testUnrelatedWordsKeepConverting() {
         let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
         XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
-        // "ncnt" is the Latin typing of "тест"; excluding "ghbdtn" must not stop it.
+        // "ntcn" is the Latin typing of "тест"; excluding "ghbdtn" must not stop it.
         XCTAssertEqual(
-            detector.evaluateFullWord(buffer: "ncnt", currentLanguage: .english)?.convertedText,
+            detector.evaluateFullWord(buffer: "ntcn", currentLanguage: .english)?.convertedText,
             "тест")
     }
 
@@ -1086,7 +1086,7 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift` — this pins Review Focus 
         // the latest, so one Option tap undoes "тест", never both.
         let detector = makeDetector(minTargetCompletions: 2)
         let first = detector.evaluate(buffer: "ghb", currentLanguage: .english)
-        let second = detector.evaluateFullWord(buffer: "ncnt", currentLanguage: .english)
+        let second = detector.evaluateFullWord(buffer: "ntcn", currentLanguage: .english)
         XCTAssertEqual(first?.convertedText, "при")
         XCTAssertEqual(second?.convertedText, "тест")
         XCTAssertNotEqual(first?.originalText, second?.originalText)
