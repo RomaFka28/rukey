@@ -1716,10 +1716,14 @@ final class StrikeStoreTests: XCTestCase {
     }
 
     func testRemoveAllClearsEveryKey() {
-        let (store, _) = makeStore()
+        let (store, url) = makeStore()
         store.registerUndo(key: "ghb")
         store.removeAll()
         XCTAssertEqual(store.strikes(for: "ghb"), 0)
+        // Clearing has to reach the file here too: a restart must not resurrect
+        // what the user removed, or the word can never be learned again.
+        let reopened = StrikeStore(fileURL: url)
+        XCTAssertEqual(reopened.strikes(for: "ghb"), 0)
     }
 
     func testRemoveAllKeysForPrefixClearsOnlyThatBranchAndPersists() {
