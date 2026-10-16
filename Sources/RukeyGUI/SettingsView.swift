@@ -129,19 +129,131 @@ public final class WordListModel: ObservableObject {
     }
 }
 
+/// The «Приложения» tab's model: the excluded-bundle list, the terminal
+/// checkbox and the picker sheet's state.
+///
+/// A live change goes to the `SecureInputMonitor` first — that is what makes an
+/// exclusion apply to the very next keystroke, without a relaunch — and the
+/// writer then persists the full new set through the app's one `exclude.json`
+/// path (re-read, merge, write), mirroring it into `SettingsState` exactly like
+/// the words tab's writer does. The search field's text and the sheet's
+/// presented flag live here rather than in `@State`, which is a macro whose
+/// implementation plugin ships only with Xcode; the Command-Line-Tools
+/// toolchain cannot expand it, so the sheet binds through the model.
+@MainActor
+public final class AppListModel: ObservableObject {
+    /// The live exclusions, sorted for display.
+    @Published public private(set) var excludedBundleIDs: [String]
+    /// Mirrors `SecureInputMonitor.excludeTerminals`.
+    @Published public var excludeTerminals: Bool
+    /// Whether the «Добавить приложение» sheet is up.
+    @Published public var isPickerPresented = false
+    /// The text of the sheet's search field, for the same reason as the words
+    /// model's input fields.
+    @Published public var searchText = ""
+    /// The freshly enumerated applications; `results` filters these.
+    @Published public private(set) var allApps: [InstalledApp] = []
+    /// True while `loadApps()` is enumerating the disk.
+    @Published public private(set) var isLoadingApps = true
+
+    private let monitor: SecureInputMonitor
+    private let picker: AppPicker
+    private let writer: @MainActor (Set<String>) -> Void
+    private let terminalsWriter: @MainActor (Bool) -> Void
+
+    public init(
+        monitor: SecureInputMonitor,
+        picker: AppPicker = AppPicker(),
+        excludeTerminals: Bool,
+        writer: @escaping @MainActor (Set<String>) -> Void,
+        terminalsWriter: @escaping @MainActor (Bool) -> Void
+    ) {
+        self.monitor = monitor
+        self.picker = picker
+        self.excludeTerminals = excludeTerminals
+        self.excludedBundleIDs = monitor.customExcludedBundleIDs.sorted()
+        self.writer = writer
+        self.terminalsWriter = terminalsWriter
+    }
+
+    /// The sheet's rows: `allApps` matched against `searchText`. Pure and
+    /// cheap, so it is recomputed on every render — no change observer needed;
+    /// a `@Published` write on `searchText` already rebuilds the body.
+    public var results: [InstalledApp] {
+        AppPicker.search(searchText, in: allApps)
+    }
+
+    /// Re-reads the exclusions from the live monitor. The tab calls this when
+    /// it appears, so a change made elsewhere shows up without reopening the
+    /// window — same contract as the words tab's `refresh()`.
+    public func refresh() {
+        excludedBundleIDs = monitor.customExcludedBundleIDs.sorted()
+    }
+
+    /// Enumerates the installed applications off the main actor. Called when
+    /// the sheet appears, so a newly installed app is offered without
+    /// relaunching; safe to call repeatedly.
+    public func loadApps() async {
+        isLoadingApps = true
+        allApps = await picker.reload()
+        isLoadingApps = false
+    }
+
+    /// Opens the picker sheet with a clean query; the sheet's `onAppear` then
+    /// loads the application list.
+    public func presentPicker() {
+        searchText = ""
+        isPickerPresented = true
+    }
+
+    /// Excludes `bundleID`: trimmed, blanks ignored, and an identifier already
+    /// present is left alone. On a real change the monitor is updated first,
+    /// then the writer gets the full new set — never a delta — so nothing a
+    /// second editor wrote can be dropped.
+    public func add(bundleID: String) {
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var ids = monitor.customExcludedBundleIDs
+        guard ids.insert(trimmed).inserted else { return }
+        monitor.customExcludedBundleIDs = ids
+        excludedBundleIDs = ids.sorted()
+        writer(ids)
+    }
+
+    /// Removes `bundleID` from the exclusions; the full remaining set is
+    /// written, so the removal survives a restart.
+    public func remove(bundleID: String) {
+        var ids = monitor.customExcludedBundleIDs
+        guard ids.remove(bundleID) != nil else { return }
+        monitor.customExcludedBundleIDs = ids
+        excludedBundleIDs = ids.sorted()
+        writer(ids)
+    }
+
+    /// Mirrors the terminal checkbox: the live monitor first, then the same
+    /// persist path, so terminals are excluded from the next keystroke on.
+    public func setExcludeTerminals(_ enabled: Bool) {
+        guard enabled != excludeTerminals else { return }
+        monitor.excludeTerminals = enabled
+        excludeTerminals = enabled
+        terminalsWriter(enabled)
+    }
+}
+
 /// The settings window's SwiftUI root: the four tabs, in the spec's order.
 ///
-/// The `Слова` tab carries the words UI; «Приложения», «Общее» and «Журнал» are
-/// placeholders whose content arrives in later tasks. Keeping their tabs present
-/// now means the window's shape does not change under the user later.
+/// The `Слова` and `Приложения` tabs carry their UIs; «Общее» and «Журнал» are
+/// placeholders whose content arrives in later tasks. Keeping their tabs
+/// present now means the window's shape does not change under the user later.
 struct SettingsView: View {
     @ObservedObject var words: WordListModel
+    @ObservedObject var apps: AppListModel
 
     var body: some View {
         TabView {
             WordsTab(words: words)
                 .tabItem { Text("Слова") }
-            PlaceholderTab(text: "Раздел «Приложения» появится позже.")
+            ApplicationsTab(apps: apps)
                 .tabItem { Text("Приложения") }
             PlaceholderTab(text: "Раздел «Общее» появится позже.")
                 .tabItem { Text("Общее") }
@@ -272,6 +384,110 @@ private struct WordSection: View {
     static func convertedWord(_ word: String) -> String? {
         guard let language = LayoutConverter.detectAlphabet(word) else { return nil }
         return LayoutConverter.convert(word, from: language)
+    }
+}
+
+/// The `Приложения` tab: the excluded-app list with its picker sheet, and the
+/// terminal checkbox.
+private struct ApplicationsTab: View {
+    @ObservedObject var apps: AppListModel
+
+    /// The checkbox binds through the model rather than directly to the
+    /// published flag, so a toggle reaches the live monitor and the config
+    /// file, not just the view.
+    private var terminalsBinding: Binding<Bool> {
+        Binding(
+            get: { apps.excludeTerminals },
+            set: { apps.setExcludeTerminals($0) })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("В этих приложениях Rukey не исправляет раскладку.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Добавить приложение") { apps.presentPicker() }
+                Spacer()
+            }
+            List(apps.excludedBundleIDs, id: \.self) { bundleID in
+                HStack(spacing: 8) {
+                    Text(bundleID)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button {
+                        apps.remove(bundleID: bundleID)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Убрать «\(bundleID)»")
+                }
+            }
+            .frame(minHeight: 150)
+            Toggle("Не трогать терминалы", isOn: terminalsBinding)
+                .help(
+                    "Terminal, iTerm2 и другие терминалы из встроенного списка тоже пропускаются")
+        }
+        .padding(16)
+        .onAppear { apps.refresh() }
+        .sheet(isPresented: $apps.isPickerPresented) {
+            AppPickerSheet(apps: apps)
+        }
+    }
+}
+
+/// The `Добавить приложение` sheet: a search field over every installed
+/// application, one click adds the row and closes.
+private struct AppPickerSheet: View {
+    @ObservedObject var apps: AppListModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Выберите приложение").font(.headline)
+            TextField("Поиск по названию или идентификатору", text: $apps.searchText)
+                .textFieldStyle(.roundedBorder)
+            Group {
+                if apps.isLoadingApps {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if apps.results.isEmpty {
+                    Text("Ничего не найдено")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(apps.results) { app in
+                        Button {
+                            apps.add(bundleID: app.id)
+                            apps.isPickerPresented = false
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(app.name).lineLimit(1)
+                                Text(app.id)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Добавить «\(app.name)»")
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Закрыть") { apps.isPickerPresented = false }
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 400, minHeight: 380)
+        // Enumerating the disk runs off the main actor; the sheet stays
+        // responsive and fills in when `reload()` returns.
+        .onAppear { Task { await apps.loadApps() } }
     }
 }
 

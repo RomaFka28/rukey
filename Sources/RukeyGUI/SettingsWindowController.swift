@@ -2,23 +2,23 @@ import AppKit
 import RukeyCore
 import SwiftUI
 
-/// Owns the single settings window and the `Слова` tab's model.
+/// Owns the single settings window and the tabs' models.
 ///
 /// One `NSWindow` for the whole app lifetime: it is built on first `show()`,
 /// closed windows are reused (`isReleasedWhenClosed = false`), and the window
 /// hosts the tabbed SwiftUI view through `NSHostingView`.
 ///
-/// The word model's writer is the app's one `exclude.json` path: re-read the
-/// file, merge the full new word set into that fresh copy, and persist it whole
+/// Both tab writers use the app's one `exclude.json` path: re-read the file,
+/// merge the changed field into that fresh copy, and persist the whole struct
 /// with `RukeyConfig.write` — never a snapshot write — so a write from this
 /// window cannot drop a field another editor (the learning controller, the
-/// menu's `Убрать`) has just written. The live `SettingsState.excludedWords` is
-/// updated in the same call, so no part of the GUI reads a stale word list.
+/// menu's `Убрать`) has just written. The live `SettingsState` is updated in
+/// the same call, so no part of the GUI reads a stale settings copy.
 @MainActor
 public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let engine: RukeyEngine
-    /// The GUI's live settings copy; the writer keeps its `excludedWords` in
-    /// sync exactly like the learning controller's writer does.
+    /// The GUI's live settings copy; the writers keep it in sync exactly like
+    /// the learning controller's writer does.
     private let state: SettingsState
     private let onClose: (() -> Void)?
 
@@ -26,6 +26,8 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     /// Retained (the view observes it) and exposed to nothing else.
     private var wordList: WordListModel?
+    /// The applications tab's model, retained for the same reason.
+    private var appList: AppListModel?
 
     public init(engine: RukeyEngine, state: SettingsState, onClose: (() -> Void)?) {
         self.engine = engine
@@ -53,6 +55,18 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
             writer: { [weak self] words in
                 self?.persistExcludedWords(words)
             })
+        // The model mutates the live monitor itself (that is what applies an
+        // exclusion without a relaunch); these writers persist the same values.
+        let appList = AppListModel(
+            monitor: engine.secureMonitor,
+            picker: AppPicker(),
+            excludeTerminals: state.excludeTerminals,
+            writer: { [weak self] ids in
+                self?.persistExcludedBundleIDs(ids)
+            },
+            terminalsWriter: { [weak self] enabled in
+                self?.persistExcludeTerminals(enabled)
+            })
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
@@ -63,11 +77,13 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.title = "Настройки Rukey"
         // Closing must not deallocate the window: `show()` reopens this one.
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SettingsView(words: wordList))
+        window.contentView = NSHostingView(
+            rootView: SettingsView(words: wordList, apps: appList))
         window.delegate = self
         window.center()
 
         self.wordList = wordList
+        self.appList = appList
         self.window = window
     }
 
@@ -81,6 +97,29 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         current.excludedWords = words.sorted()
         RukeyConfig.write(current, to: RukeyConfig.configFileURL)
         state.excludedWords = current.excludedWords
+    }
+
+    /// The applications tab's writer, with the same re-read-merge-write
+    /// contract as `persistExcludedWords`. The live monitor was already
+    /// updated by the model — that is what makes the exclusion apply to the
+    /// next keystroke — so this only persists the full set and mirrors the
+    /// fresh file into the live settings copy.
+    private func persistExcludedBundleIDs(_ ids: Set<String>) {
+        var current = RukeyConfig.load(
+            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
+        current.excludedBundleIDs = ids
+        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
+        state.excludedBundleIDs = current.excludedBundleIDs
+    }
+
+    /// The terminal checkbox's writer: same path, one flag. The monitor itself
+    /// is set by the model before this runs.
+    private func persistExcludeTerminals(_ enabled: Bool) {
+        var current = RukeyConfig.load(
+            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
+        current.excludeTerminals = enabled
+        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
+        state.excludeTerminals = current.excludeTerminals
     }
 
     // MARK: - NSWindowDelegate
