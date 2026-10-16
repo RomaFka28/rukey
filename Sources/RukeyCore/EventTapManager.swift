@@ -72,9 +72,6 @@ public final class EventTapManager: @unchecked Sendable {
   public func start() -> Bool {
     guard !isRunning else { return true }
 
-    let eventMask =
-      (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
-
     let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
     guard
@@ -82,7 +79,7 @@ public final class EventTapManager: @unchecked Sendable {
         tap: .cgSessionEventTap,
         place: .headInsertEventTap,
         options: .defaultTap,
-        eventsOfInterest: CGEventMask(eventMask),
+        eventsOfInterest: TapPolicy.eventMask,
         callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
           guard let refcon = refcon else {
             return Unmanaged.passRetained(event)
@@ -170,13 +167,22 @@ public final class EventTapManager: @unchecked Sendable {
       // runs against a wrong buffer and corrections silently stop.
       bufferManager.replaceBuffer(with: calculation.textToRestore)
       onOptionUndo?(calculation.originalLanguage, calculation.textToRestore)
-    } else {
+    } else if
+      TapPolicy.shouldToggleLayoutOnOptionTap(
+        isSecureInputActive: secureMonitor.isSecureInputActive())
+    {
       let from = LayoutConverter.detectAlphabet(bufferManager.currentBuffer) ?? inputSourceManager.effectiveLanguage()
       let to = from.opposite
       inputSourceManager.apply(language: to)
       bufferManager.reset()
       undoManager.clear()
       onOptionToggle?(from, to)
+    } else {
+      // Secure Input is active: the toggle is refused, but the press is still
+      // consumed as a deliberate Option tap and the half-typed buffer is not
+      // worth keeping across the refusal.
+      onOptionIgnored?("secure_input_active")
+      bufferManager.reset()
     }
   }
 
@@ -252,6 +258,12 @@ public final class EventTapManager: @unchecked Sendable {
       if let tap = eventTap {
         CGEvent.tapEnable(tap: tap, enable: true)
       }
+      return pass(event)
+    }
+    // A click moves the caret, so a pending undo would restore text at the
+    // wrong place: the click must disarm it. Same boundary as Escape/Enter.
+    if TapPolicy.isUndoResettingEvent(type) {
+      undoManager.clear()
       return pass(event)
     }
     // Filter out our own synthetic events (Backspace, Unicode strings)
