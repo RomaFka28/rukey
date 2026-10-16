@@ -66,4 +66,33 @@ final class DaemonBootstrapTests: XCTestCase {
         )
         XCTAssertEqual(engine.secureMonitor.customExcludedBundleIDs, ["com.example.app"])
     }
+
+    /// Every setting the user can change must reach the object that reads it.
+    /// The brief singles out `minPrefixLength` ("not a literal 3, or the
+    /// settings would not take effect") and `verbose` ("that is what the
+    /// `verbose` parameter is for"); both directions are pinned.
+    func testSettingsReachTheObjectsThatReadThem() throws {
+        var config = makeConfig()
+        config.minPrefixLength = 2
+        config.excludeTerminals = true
+        let changed = try RukeyEngine(
+            config: config,
+            verbose: true,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
+        XCTAssertEqual(changed.detector.minPrefixLength, 2)
+        XCTAssertTrue(changed.secureMonitor.excludeTerminals)
+        XCTAssertTrue(changed.tapManager.logger.isVerbose)
+
+        let plain = try RukeyEngine(
+            config: makeConfig(),
+            verbose: false,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
+        XCTAssertEqual(plain.detector.minPrefixLength, 3)
+        XCTAssertFalse(plain.secureMonitor.excludeTerminals)
+        XCTAssertFalse(plain.tapManager.logger.isVerbose)
+    }
 }
