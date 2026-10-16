@@ -230,8 +230,9 @@ public final class Detector: @unchecked Sendable {
                 : enTrie.contains(text) || customDictionary.contains(text)
         }
 
-        // H1 must fail for H2 to be considered; valid words never reach here
-        // (callers check `contains(core)` first via the run path contract).
+        // H1 must fail for H2 to be considered. Valid words do reach this path
+        // (`evaluateFullWord` falls through to it whenever `decisionIfMistyped`
+        // returns nil); this guard, not the caller, is what stops them.
         guard !contains(core, bufferLang) else { return nil }
 
         // H1: faithful conversion of the entire token.

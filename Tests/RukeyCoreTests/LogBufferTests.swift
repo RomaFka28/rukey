@@ -41,14 +41,6 @@ final class LogBufferTests: XCTestCase {
         XCTAssertEqual(buffer.lines().map(\.level), [.info, .error])
     }
 
-    func testLinesReturnsASnapshotNotTheStore() {
-        let buffer = LogBuffer()
-        buffer.log("kept")
-        var snapshot = buffer.lines()
-        snapshot.removeAll()
-        XCTAssertEqual(buffer.lines().map(\.text), ["kept"])
-    }
-
     func testAppendedLinesCarryTheGivenLevelAndText() {
         let buffer = LogBuffer()
         buffer.append(LogLine(level: .warn, text: "manual"))

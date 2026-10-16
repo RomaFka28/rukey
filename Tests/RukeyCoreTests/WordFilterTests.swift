@@ -41,7 +41,7 @@ final class WordFilterTests: XCTestCase {
         // `isEmpty` reads only the word set; this pins that the blanks never
         // reached the trie either, or " " would be a live prefix key.
         XCTAssertFalse(filter.isPrefixOfExcluded(" "))
-        XCTAssertFalse(filter.isPrefixOfExcluded(""))
+        XCTAssertFalse(filter.isPrefixOfExcluded("   "))
     }
 
     func testReplaceAllSwapsTheWholeSet() {

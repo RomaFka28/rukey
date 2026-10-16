@@ -168,7 +168,7 @@ public struct RukeyConfig: Sendable {
   /// `DecodingError.localizedDescription` is a generic Cocoa string ("The data
   /// couldn't be read because it isn't in the correct format."), and so is
   /// `context.underlyingError.localizedDescription` — on this toolchain the
-  /// position of the stray comma lives one level deeper, in the underlying
+  /// position of the parse error lives one level deeper, in the underlying
   /// `NSError`'s `NSDebugDescriptionErrorKey`. Surface it, or the user is told
   /// that something is wrong but not what.
   private static func describe(_ error: Error) -> String {

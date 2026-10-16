@@ -29,9 +29,10 @@ public struct LogLine: Identifiable, Sendable {
 /// Buffers are injected rather than read from `LogBuffer.shared` so a test never
 /// sees the daemon's own lines. Writes are lossy by design: once the ring is full
 /// the oldest line is dropped.
+///
+/// `@unchecked Sendable` is sound because all mutable state is reachable only
+/// inside `lock.withLock`, and `LogLine` itself is a `Sendable` value type.
 public final class LogBuffer: @unchecked Sendable {
-    // `@unchecked` is sound because all mutable state is reachable only inside
-    // `lock.withLock`, and `LogLine` itself is a `Sendable` value type.
     /// Process-wide buffer used by the daemon.
     public static let shared = LogBuffer()
 
@@ -58,7 +59,8 @@ public final class LogBuffer: @unchecked Sendable {
         }
     }
 
-    /// Every retained line, oldest first.
+    /// Every retained line, oldest first. The returned array is a snapshot;
+    /// mutating it does not affect the buffer.
     public func lines() -> [LogLine] {
         lock.withLock {
             guard count > 0 else { return [] }

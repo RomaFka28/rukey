@@ -117,7 +117,9 @@ final class RukeyConfigTests: XCTestCase {
             )
             XCTAssertEqual(config.minPrefixLength, 3)
             XCTAssertTrue(
-                buffer.lines().contains { $0.level == .warn && $0.text.contains("minPrefixLength") },
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("minPrefixLength = 0 is out of range")
+                },
                 "an out-of-range minPrefixLength must be reported, not silently applied")
         }
     }
@@ -136,8 +138,85 @@ final class RukeyConfigTests: XCTestCase {
             )
             XCTAssertEqual(config.autoLearnThreshold, 3)
             XCTAssertTrue(
-                buffer.lines().contains { $0.level == .warn && $0.text.contains("autoLearnThreshold") },
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("autoLearnThreshold = 4 is out of range")
+                },
                 "an out-of-range autoLearnThreshold must be reported, not silently applied")
+        }
+    }
+
+    func testAnOutOfRangeKeyDoesNotDropItsValidNeighbours() throws {
+        // Anti-goal 2's file-side twin: rejecting the whole file because one key
+        // is out of range would silently drop every other value in it.
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{ \"autoLearnThreshold\": 5, \"minPrefixLength\": 0 }"
+                .write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: [],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.autoLearnThreshold, 5)
+            XCTAssertEqual(config.minPrefixLength, 3)
+            XCTAssertTrue(
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("minPrefixLength = 0 is out of range")
+                },
+                "the offending key must still be reported")
+        }
+    }
+
+    func testAdmissibleValuesPassThroughWithoutWarnings() throws {
+        // `0` is the spec's "disabled" setting: a guard written as `value > 0`
+        // would silently reject it. The set's members and the range's edges are
+        // pinned so a narrowing refactor cannot pass unnoticed.
+        let cases: [(threshold: Int, prefix: Int)] = [(0, 2), (2, 3), (3, 4), (5, 5)]
+        try withTempHome { home in
+            for (threshold, prefix) in cases {
+                let url = home.appendingPathComponent("exclude-\(threshold).json")
+                try? "{ \"autoLearnThreshold\": \(threshold), \"minPrefixLength\": \(prefix) }"
+                    .write(to: url, atomically: true, encoding: .utf8)
+                let buffer = LogBuffer()
+                let config = RukeyConfig.load(
+                    excludeTerminalsFlag: false,
+                    extraBundleIDs: [],
+                    verbose: false,
+                    configFileURL: url,
+                    logBuffer: buffer
+                )
+                XCTAssertEqual(config.autoLearnThreshold, threshold)
+                XCTAssertEqual(config.minPrefixLength, prefix)
+                XCTAssertFalse(
+                    buffer.lines().contains { $0.level == .warn },
+                    "admissible values (\(threshold), \(prefix)) must not be reported")
+            }
+        }
+    }
+
+    func testTypeMismatchIsReportedAndFallsBack() throws {
+        // `.typeMismatch` is a reachable decode failure (`"minPrefixLength": "3"`):
+        // the file is rejected as a whole, the CLI values survive, and the reason
+        // names the actual problem.
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{ \"minPrefixLength\": \"3\" }".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: ["com.example.flag"],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.minPrefixLength, 3)
+            XCTAssertEqual(config.excludedBundleIDs, ["com.example.flag"])
+            XCTAssertTrue(
+                buffer.lines().contains { $0.level == .warn && $0.text.contains("wrong type") },
+                "a type mismatch must be reported with its actual reason")
         }
     }
 
@@ -155,11 +234,11 @@ final class RukeyConfigTests: XCTestCase {
             )
             XCTAssertEqual(config.excludedBundleIDs, ["com.example.flag"])
             XCTAssertTrue(
-                buffer.lines().contains { $0.level == .warn && $0.text.contains("exclude.json") },
-                "a corrupt config must be reported, not silently swallowed")
-            XCTAssertTrue(
-                buffer.lines().contains { $0.text.contains("exclude.json") && $0.text.contains("Unexpected character") },
-                "the warning must name the parse failure, not a generic Cocoa message")
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("exclude.json")
+                        && $0.text.contains("Unexpected character")
+                },
+                "a corrupt config must be warned about with its parse failure, not silently swallowed")
         }
     }
 
