@@ -264,6 +264,7 @@ git push
 - Create: `Tests/RukeyCoreTests/DetectorTests.swift`
 - Create: `Tests/RukeyCoreTests/UndoManagerTests.swift`
 - Create: `Tests/RukeyCoreTests/RukeyConfigTests.swift`
+- Create: `Tests/RukeyCoreTests/LogBufferTests.swift`
 - Modify: `Sources/RukeyCore/RukeyConfig.swift:16-58`
 
 **Interfaces:**
@@ -319,10 +320,11 @@ final class DetectorTests: XCTestCase {
     }
 
     func testJunkBackedPrefixDoesNotFlipOnTheFly() {
-        // "bebra" sits alone behind the "beb" prefix, so with a high bar the
-        // mid-word flip must not fire.
+        // "ghb" -> "при" is backed by exactly two RU entries (привет, приветствие),
+        // one below the bar of 3 — the mid-word flip must not fire.
+        // (testWellBackedPrefixFlipsOnTheFly flips the very same buffer at a bar of 2.)
         XCTAssertNil(makeDetector(minTargetCompletions: 3).evaluate(
-            buffer: "beb", currentLanguage: .english))
+            buffer: "ghb", currentLanguage: .english))
     }
 
     func testWellBackedPrefixFlipsOnTheFly() {
@@ -374,8 +376,9 @@ final class UndoManagerTests: XCTestCase {
     }
 
     func testNothingToUndoBeforeAnyCorrection() {
-        XCTAssertFalse(RukeyUndoManager().canUndo)
-        XCTAssertNil(RukeyUndoManager().calculateUndo())
+        let manager = RukeyUndoManager()
+        XCTAssertFalse(manager.canUndo)
+        XCTAssertNil(manager.calculateUndo())
     }
 
     func testRecordedCorrectionIsUndoable() {
@@ -418,11 +421,14 @@ final class UndoManagerTests: XCTestCase {
 In `Tests/RukeyCoreTests/RukeyConfigTests.swift`:
 
 ```swift
+import Foundation
 import XCTest
 @testable import RukeyCore
 
 final class RukeyConfigTests: XCTestCase {
-    private func withTempHome(_ body: (URL) throws -> Void) rethrows {
+    // `throws`, not `rethrows`: creating the temp directory is a throwing call in
+    // its own right, so `rethrows` would not compile.
+    private func withTempHome(_ body: (URL) throws -> Void) throws {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("rukey-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
@@ -442,8 +448,8 @@ final class RukeyConfigTests: XCTestCase {
         XCTAssertEqual(config.excludedBundleIDs, ["com.example.fromFlag"])
     }
 
-    func testFileAddsToFlagBundleIDs() {
-        withTempHome { home in
+    func testFileAddsToFlagBundleIDs() throws {
+        try withTempHome { home in
             let url = home.appendingPathComponent("exclude.json")
             try? "{ \"excludeBundleIDs\": [\"com.example.fromFile\"] }".write(
                 to: url, atomically: true, encoding: .utf8)
@@ -475,14 +481,15 @@ final class RukeyConfigTests: XCTestCase {
         XCTAssertEqual(config.excludedWords, [])
     }
 
-    func testValuesAreReadFromFile() {
-        withTempHome { home in
+    func testValuesAreReadFromFile() throws {
+        try withTempHome { home in
             let url = home.appendingPathComponent("exclude.json")
             try? """
             {
               "excludeBundleIDs": ["com.example.app"],
               "excludedWords": ["ghbdtn", "иуикф"],
               "excludeTerminals": true,
+              "launchAtLogin": true,
               "autoLearnThreshold": 5,
               "notifyOnEveryUndo": false,
               "minPrefixLength": 4
@@ -499,35 +506,166 @@ final class RukeyConfigTests: XCTestCase {
             XCTAssertEqual(config.autoLearnThreshold, 5)
             XCTAssertEqual(config.notifyOnEveryUndo, false)
             XCTAssertEqual(config.minPrefixLength, 4)
+            XCTAssertTrue(config.launchAtLogin)          // read path
+            XCTAssertTrue(config.showCorrectionFlash)    // omitted from the file -> default
+        }
+    }
+
+    func testExplicitFlagSurvivesAFileThatSaysFalse() throws {
+        // Anti-goal 2: an explicit CLI flag must not be silently discarded by a config file.
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{\"excludeTerminals\": false}".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: true,
+                extraBundleIDs: [],
+                verbose: false,
+                configFileURL: url
+            )
+            XCTAssertTrue(config.excludeTerminals)
+        }
+    }
+
+    func testOutOfRangeMinPrefixLengthFallsBackAndWarns() throws {
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{\"minPrefixLength\": 0}".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: [],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.minPrefixLength, 3)
+            XCTAssertTrue(
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("minPrefixLength = 0 is out of range")
+                },
+                "an out-of-range minPrefixLength must be reported, not silently applied")
+        }
+    }
+
+    func testOutOfRangeAutoLearnThresholdFallsBackAndWarns() throws {
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{\"autoLearnThreshold\": 4}".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: [],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.autoLearnThreshold, 3)
+            XCTAssertTrue(
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("autoLearnThreshold = 4 is out of range")
+                },
+                "an out-of-range autoLearnThreshold must be reported, not silently applied")
+        }
+    }
+
+    func testAnOutOfRangeKeyDoesNotDropItsValidNeighbours() throws {
+        // Anti-goal 2's file-side twin: rejecting the whole file because one key
+        // is out of range would silently drop every other value in it.
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{ \"autoLearnThreshold\": 5, \"minPrefixLength\": 0 }"
+                .write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: [],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.autoLearnThreshold, 5)
+            XCTAssertEqual(config.minPrefixLength, 3)
+            XCTAssertTrue(
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("minPrefixLength = 0 is out of range")
+                },
+                "the offending key must still be reported")
+        }
+    }
+
+    func testAdmissibleValuesPassThroughWithoutWarnings() throws {
+        // `0` is the spec's "disabled" setting: a guard written as `value > 0`
+        // would silently reject it. The set's members and the range's edges are
+        // pinned so a narrowing refactor cannot pass unnoticed.
+        let cases: [(threshold: Int, prefix: Int)] = [(0, 2), (2, 3), (3, 4), (5, 5)]
+        try withTempHome { home in
+            for (threshold, prefix) in cases {
+                let url = home.appendingPathComponent("exclude-\(threshold).json")
+                try? "{ \"autoLearnThreshold\": \(threshold), \"minPrefixLength\": \(prefix) }"
+                    .write(to: url, atomically: true, encoding: .utf8)
+                let buffer = LogBuffer()
+                let config = RukeyConfig.load(
+                    excludeTerminalsFlag: false,
+                    extraBundleIDs: [],
+                    verbose: false,
+                    configFileURL: url,
+                    logBuffer: buffer
+                )
+                XCTAssertEqual(config.autoLearnThreshold, threshold)
+                XCTAssertEqual(config.minPrefixLength, prefix)
+                XCTAssertFalse(
+                    buffer.lines().contains { $0.level == .warn },
+                    "admissible values (\(threshold), \(prefix)) must not be reported")
+            }
+        }
+    }
+
+    func testTypeMismatchIsReportedAndFallsBack() throws {
+        // `.typeMismatch` is a reachable decode failure (`"minPrefixLength": "3"`):
+        // the file is rejected as a whole, the CLI values survive, and the reason
+        // names the actual problem.
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{ \"minPrefixLength\": \"3\" }".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: ["com.example.flag"],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.minPrefixLength, 3)
+            XCTAssertEqual(config.excludedBundleIDs, ["com.example.flag"])
+            XCTAssertTrue(
+                buffer.lines().contains { $0.level == .warn && $0.text.contains("wrong type") },
+                "a type mismatch must be reported with its actual reason")
+        }
+    }
+
+    func testCorruptFileFallsBackAndReportsReason() throws {
+        let buffer = LogBuffer()
+        try withTempHome { home in
+            let url = home.appendingPathComponent("exclude.json")
+            try? "{ not json at all ".write(to: url, atomically: true, encoding: .utf8)
+            let config = RukeyConfig.load(
+                excludeTerminalsFlag: false,
+                extraBundleIDs: ["com.example.flag"],
+                verbose: false,
+                configFileURL: url,
+                logBuffer: buffer
+            )
+            XCTAssertEqual(config.excludedBundleIDs, ["com.example.flag"])
+            XCTAssertTrue(
+                buffer.lines().contains {
+                    $0.level == .warn && $0.text.contains("exclude.json")
+                        && $0.text.contains("Unexpected character")
+                },
+                "a corrupt config must be warned about with its parse failure, not silently swallowed")
         }
     }
 }
 ```
-
-The corrupt-file case must also assert that the failure is reported. Add a capture buffer before Task 2 Step 4 and assert on it:
-
-```swift
-func testCorruptFileFallsBackAndReportsReason() {
-    let buffer = LogBuffer()
-    withTempHome { home in
-        let url = home.appendingPathComponent("exclude.json")
-        try? "{ not json at all ".write(to: url, atomically: true, encoding: .utf8)
-        let config = RukeyConfig.load(
-            excludeTerminalsFlag: false,
-            extraBundleIDs: ["com.example.flag"],
-            verbose: false,
-            configFileURL: url,
-            logBuffer: buffer
-        )
-        XCTAssertEqual(config.excludedBundleIDs, ["com.example.flag"])
-        XCTAssertTrue(
-            buffer.lines().contains { $0.level == .warn && $0.text.contains("exclude.json") },
-            "a corrupt config must be reported, not silently swallowed")
-    }
-}
-```
-
-This is Review Focus item 2.
 
 - [ ] **Step 4: Widen `RukeyConfig` to satisfy the tests**
 
@@ -537,6 +675,7 @@ In `Sources/RukeyCore/RukeyConfig.swift`:
 - Change the private decoder shape to make every new key optional so an older file still decodes.
 - Change `load(excludeTerminalsFlag:extraBundleIDs:verbose:)` to `load(excludeTerminalsFlag:extraBundleIDs:verbose:configFileURL:logBuffer:)` with both new parameters defaulted to `RukeyConfig.configFileURL` and `LogBuffer.shared`. The existing call in `Sources/RukeyApp/main.swift:42` must keep compiling.
 - When decoding fails or the file is absent, do not change behaviour — keep the flag-only result — but append a `.warn` line to `logBuffer` naming the file URL and the failure. Absent file: no warning.
+- Add the two constants the range check and the GUI stepper share, each with a one-line doc comment: `public static let autoLearnThresholds = [0, 2, 3, 5]` (spec §7; `0` is "disabled") and `public static let minPrefixLengthRange = 2...5` (inclusive). Out-of-range values fall back to the default and warn — they are *not* clamped to the nearest admissible value.
 
 - [ ] **Step 5: Run the suite to see it fail**
 
@@ -560,6 +699,62 @@ public struct LogLine: Identifiable, Sendable {
 ```
 
 `LogBuffer` is a `final class`, `@unchecked Sendable`, with a fixed-capacity ring (`init(capacity: Int = 500)`), a `shared` static, `append(_ line: LogLine)`, `lines() -> [LogLine]` returning oldest-first, and `clear()`. Guard the storage with `NSLock`. Provide a convenience `func log(_ text: String, level: LogLine.Level = .info)`.
+
+Also create `Tests/RukeyCoreTests/LogBufferTests.swift` — append order, the full ring's eviction, zero-capacity clamping, `clear`, the default level, and an explicit level:
+
+```swift
+import XCTest
+import Foundation
+@testable import RukeyCore
+
+final class LogBufferTests: XCTestCase {
+    func testAppendedLinesComeBackOldestFirst() {
+        let buffer = LogBuffer()
+        buffer.log("first")
+        buffer.log("second")
+        buffer.log("third")
+        XCTAssertEqual(buffer.lines().map(\.text), ["first", "second", "third"])
+    }
+
+    func testFullRingEvictsOldestAndKeepsOrder() {
+        let buffer = LogBuffer(capacity: 3)
+        for text in ["one", "two", "three", "four"] {
+            buffer.log(text)
+        }
+        XCTAssertEqual(buffer.lines().map(\.text), ["two", "three", "four"])
+    }
+
+    func testZeroCapacityClampsToAUsableBuffer() {
+        let buffer = LogBuffer(capacity: 0)
+        buffer.log("only")
+        XCTAssertEqual(buffer.lines().map(\.text), ["only"])
+    }
+
+    func testClearEmptiesTheBuffer() {
+        let buffer = LogBuffer()
+        buffer.log("before")
+        buffer.clear()
+        XCTAssertEqual(buffer.lines().count, 0)
+        buffer.log("after")
+        XCTAssertEqual(buffer.lines().map(\.text), ["after"])
+    }
+
+    func testLogDefaultsToInfoLevel() {
+        let buffer = LogBuffer()
+        buffer.log("plain")
+        buffer.log("loud", level: .error)
+        XCTAssertEqual(buffer.lines().map(\.level), [.info, .error])
+    }
+
+    func testAppendedLinesCarryTheGivenLevelAndText() {
+        let buffer = LogBuffer()
+        buffer.append(LogLine(level: .warn, text: "manual"))
+        let line = buffer.lines().first
+        XCTAssertEqual(line?.level, .warn)
+        XCTAssertEqual(line?.text, "manual")
+    }
+}
+```
 
 - [ ] **Step 7: Run the suite to see it pass**
 
@@ -647,7 +842,7 @@ final class WordFilterTests: XCTestCase {
         // `isEmpty` reads only the word set; this pins that the blanks never
         // reached the trie either, or " " would be a live prefix key.
         XCTAssertFalse(filter.isPrefixOfExcluded(" "))
-        XCTAssertFalse(filter.isPrefixOfExcluded(""))
+        XCTAssertFalse(filter.isPrefixOfExcluded("   "))
     }
 
     func testReplaceAllSwapsTheWholeSet() {
