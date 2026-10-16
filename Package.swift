@@ -37,7 +37,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RukeyGUITests",
-            dependencies: ["RukeyGUI"]
+            dependencies: ["RukeyGUI", "RukeyCore"]
         ),
     ]
 )

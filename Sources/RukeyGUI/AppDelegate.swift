@@ -37,6 +37,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The menu-bar item; retained here so the menu is rebuilt from one place.
     private var statusItem: StatusItemController?
+    /// The settings window, built on first use and held for the app's lifetime.
+    private var settingsWindow: SettingsWindowController?
     /// Whether `engine.tapManager.start()` actually started the tap. A grant
     /// alone must not read "Работает": the status line distinguishes a real
     /// running tap from a failed start ("Не запущено").
@@ -55,9 +57,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // The settings and log windows do not exist yet (Task 4); their menu
-        // rows stay disabled until the openers are wired.
+        // The log window does not exist yet (Task 6); its menu row stays
+        // disabled until the opener is wired (nil below).
         let statusItem = StatusItemController(
+            onOpenSettings: { [weak self] in
+                self?.openSettings()
+            },
             onToggleLaunchAtLogin: { [weak self] enabled in
                 self?.setLaunchAtLogin(enabled)
             },
@@ -209,6 +214,35 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
         current.launchAtLogin = enabled
         RukeyConfig.write(current, to: RukeyConfig.configFileURL)
+        refreshStatusModel()
+    }
+
+    /// The `Настройки…` opener. The window edits the live word lists, so it
+    /// needs the engine — and the engine only exists once the grant has
+    /// appeared; a click before that is a no-op, with the red status row
+    /// already explaining why. The controller is created once and reused.
+    private func openSettings() {
+        guard let engine else { return }
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindowController(
+                engine: engine,
+                state: state,
+                onClose: { [weak self] in
+                    self?.settingsWindowDidClose()
+                })
+        }
+        settingsWindow?.show()
+    }
+
+    /// Closing the settings window can invalidate the learned-word banner: the
+    /// word may have just been removed there. The banner is dropped when its
+    /// word is no longer excluded, and the menu is refreshed either way.
+    private func settingsWindowDidClose() {
+        if let banner = learnedWordBanner, let engine,
+            !engine.wordFilter.isExcluded(banner.prefix)
+        {
+            learnedWordBanner = nil
+        }
         refreshStatusModel()
     }
 }
