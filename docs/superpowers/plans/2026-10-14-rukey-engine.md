@@ -925,6 +925,8 @@ Expected: FAIL — `cannot find 'CustomDictionary' in scope`.
 
 Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie` construction as `WordFilter` from Task 3 Step 4, trimmed and dropping empty words, plus persistence. Expose both `contains` (exact, via `Trie.contains`) and `isPrefixOfKnown` (via `Trie.hasPrefix`) — the detector needs prefix membership on the on-the-fly path, where it is asked whether `pfj` is the start of a taught word rather than whether it is one.
 
+Like `WordFilter`, this is a `@unchecked Sendable` class and carries the attribute's justification in a comment, because the Global Constraints require one: the lock guards both stored properties, the pair is only ever swapped together, and the published trie is never mutated afterwards, so a reader cannot observe a trie that disagrees with its backing word set.
+
 - [ ] **Step 4: Inject it into Detector**
 
 In `Detector.init` add `customDictionary: CustomDictionary = CustomDictionary()` after `wordFilter`, and store it as `public let customDictionary: CustomDictionary`.
@@ -949,6 +951,14 @@ would silently block `hello`" risk that widening `isCurrentValid` carries.
 
 Leave `wordFilter` out of this method entirely; the exclusion filter is checked
 before the trie work, per Task 3.
+
+**Hermeticity.** Defaulting `customDictionary` in `Detector.init` means every
+existing `Detector(...)` construction that omits it now reads the developer's real
+`~/.config/rukey/custom.json`. Two helpers in `DetectorTests` do exactly that —
+`makeDetector()` and `makeFilteredDetector()` — so pass an explicit empty
+`CustomDictionary` built on a per-test temporary URL in both, and in any other
+construction you add. `makeDetector()`'s baseline means *empty* custom words. No
+test in this suite may read or write the real config directory.
 
 - [ ] **Step 5: Run the tests to see them pass**
 
