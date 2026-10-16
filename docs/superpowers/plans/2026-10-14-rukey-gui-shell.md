@@ -87,7 +87,7 @@ Expected: prints a SHA-1 fingerprint, exits 0. Run it twice — the second run m
 `tools/package-app.sh` must:
 
 1. `swift build -c release`.
-2. Assemble `dist/Rukey.app/Contents/{MacOS,Resources}`; copy the built `rukey` binary to `Contents/MacOS/Rukey`; copy `Info.plist` into `Contents/`.
+2. Assemble `dist/Rukey.app/Contents/{MacOS,Resources}`; copy the built executable product to `Contents/MacOS/Rukey` — today that is the `rukey` product, since the GUI target does not exist yet; once Task 2 adds `RukeyGUI` the script must copy that product instead, so keep the product name in a variable at the top of the script. Copy `Info.plist` into `Contents/`.
 3. Embed the dictionaries into the bundle and point `Bundle.module` at the bundle — verify the copy list against `Package.swift`'s `.process("Resources")` declaration rather than assuming filenames.
 4. Sign with `codesign --force --sign "<identity>" --options runtime --timestamp=none dist/Rukey.app`, where `<identity>` is the hash from Step 1. `--options runtime` is the hardened runtime; if it rejects the self-signed identity, drop it and record why in the script header.
 5. Print the resulting bundle path.
@@ -136,6 +136,7 @@ git push
 
 **Files:**
 - Modify: `Package.swift` — add `.executableTarget(name: "RukeyGUI", dependencies: ["RukeyCore"])`
+- Modify: `tools/package-app.sh` — switch its executable-product variable from `rukey` to `RukeyGUI`
 - Create: `Sources/RukeyGUI/main.swift`
 - Create: `Sources/RukeyGUI/AppDelegate.swift`
 - Create: `Sources/RukeyGUI/PermissionGate.swift`
@@ -280,17 +281,22 @@ The critical behaviour: with no grant the app stays alive, shows a red status, a
 Run: `swift build 2>&1 | tail -5`
 Expected: `Build complete!`
 
+Flip `tools/package-app.sh`'s executable-product variable from `rukey` to `RukeyGUI` and re-package — from this task on the bundle must launch the GUI:
+
+Run: `bash tools/package-app.sh && codesign -dv --verbose=2 dist/Rukey.app 2>&1 | grep -i authority`
+Expected: prints a path ending in `dist/Rukey.app`; the authority line shows the Rukey certificate, not `(adhoc)`.
+
 Run: `swift run rukey --test-conversion 2>&1 | tail -8`
 Expected: the same five sample lines. The CLI target must be untouched by this task.
 
 - [ ] **Step 7: Manual check — permission UX**
 
-Launch `dist/Rukey.app` **without** granting Accessibility. Expect: the process stays running, and after Step 3's delegate work there is a red status. Grant the permission while it is running. Expect: the tap starts without relaunching. Report both observations in the commit message.
+Launch `dist/Rukey.app` **without** granting Accessibility. Expect: the process stays alive and does not exit (the red status item itself only appears after Task 3 — here verify process survival, e.g. with `ps`; Task 3's manual check re-verifies the red status). Grant the permission while it is running. Expect: the app picks the grant up without relaunching (visible as the green status from Task 3 on; here verify the process survives). Report both observations in the commit message.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Package.swift Sources/RukeyGUI/ Tests/RukeyGUITests/
+git add Package.swift tools/ Sources/RukeyGUI/ Tests/RukeyGUITests/
 git commit -m "Add GUI target that waits for the Accessibility grant instead of exiting"
 git push
 ```
