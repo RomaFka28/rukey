@@ -85,7 +85,7 @@ Five input classes the spec implies but does not spell out. Each is pinned by a 
 
 **Interfaces:**
 - Consumes: nothing; this is the first task.
-- Produces: `TestDictionaries.enTrie`, `TestDictionaries.ruTrie`, `TestDictionaries.makeTrie(_ words: [String]) -> Trie` — used by Tasks 2, 3, 4, 5. Small fixed English and Russian word lists (10–20 words each) covering both real conversions (`ghbdtn`, `привет`, `hello`, `реддщ`, `ручка`) and junk entries that exercise `minTargetCompletions` (`ghul`).
+- Produces: `TestDictionaries.enTrie`, `TestDictionaries.ruTrie`, `TestDictionaries.makeTrie(_ words: [String]) -> Trie` — used by Tasks 2, 3, 4, 5. Small fixed English and Russian word lists (10–20 words each) covering both real conversions (`ghbdtn`→`привет`, `hello`→`руддщ`, `ncnt`→`тест`) and a junk-backed prefix that exercises `minTargetCompletions` (`beb` exists only behind `bebra`).
 
 - [ ] **Step 1: Add the test target**
 
@@ -197,12 +197,12 @@ final class LayoutConverterTests: XCTestCase {
     func testRoundTripProbes() {
         XCTAssertEqual(LayoutConverter.toRussian("ghbdtn"), "привет")
         XCTAssertEqual(LayoutConverter.toEnglish("привет"), "ghbdtn")
-        XCTAssertEqual(LayoutConverter.toEnglish("реддщ"), "hello")
-        XCTAssertEqual(LayoutConverter.toRussian("hello"), "реддщ")
+        XCTAssertEqual(LayoutConverter.toEnglish("руддщ"), "hello")
+        XCTAssertEqual(LayoutConverter.toRussian("hello"), "руддщ")
     }
 
     func testConversionPreservesCapitalisation() {
-        XCTAssertEqual(LayoutConverter.toRussian("Hello"), "Реддщ")
+        XCTAssertEqual(LayoutConverter.toRussian("Hello"), "Руддщ")
         XCTAssertEqual(LayoutConverter.toEnglish("Привет"), "Ghbdtn")
     }
 
@@ -239,7 +239,9 @@ Expected: FAIL — `RukeyCoreTests` target missing or errors on the missing file
 
 - [ ] **Step 6: Make the tests pass**
 
-No production code changes are needed; `Trie` and `LayoutConverter` already satisfy every assertion. If `testConversionPreservesCapitalisation` fails, the mapping tables in `LayoutConverter.swift:18-19` are misaligned — fix the table, do not weaken the test.
+No production code changes are needed; `Trie` and `LayoutConverter` already satisfy every assertion.
+
+**Do not change the mapping tables to satisfy a test.** `LayoutConverter.validateMappings()` hard-codes the round-trip probes `ghbdtn`↔`привет` and `hello`↔`руддщ`, the console gate in `Sources/RukeyApp/main.swift` evaluates `руддщ`, and `Sources/RukeyMeasure` asserts the same pairs. The tables are the source of truth; if an assertion here disagrees with them, the assertion is what is wrong.
 
 - [ ] **Step 7: Run the suite to see it pass**
 
@@ -298,7 +300,7 @@ final class DetectorTests: XCTestCase {
 
     func testFullWordRussianTypingLatinLayoutConverts() {
         let decision = makeDetector().evaluateFullWord(
-            buffer: "реддщ", currentLanguage: .russian)
+            buffer: "руддщ", currentLanguage: .russian)
         XCTAssertEqual(decision?.convertedText, "hello")
         XCTAssertEqual(decision?.triggerRule, "full_word_ru_to_en")
     }
@@ -308,9 +310,12 @@ final class DetectorTests: XCTestCase {
     }
 
     func testCapitalisedWordBehavesLikeLowercase() {
+        // Capitalisation is carried through the mapping table, not stripped:
+        // "Ghbdtn" yields "Привет". Identical behaviour, capital P preserved.
         let decision = makeDetector().evaluateFullWord(
             buffer: "Ghbdtn", currentLanguage: .english)
-        XCTAssertEqual(decision?.convertedText, "привет")
+        XCTAssertEqual(decision?.convertedText, "Привет")
+        XCTAssertEqual(decision?.triggerRule, "full_word_en_to_ru")
     }
 
     func testJunkBackedPrefixDoesNotFlipOnTheFly() {
@@ -321,9 +326,11 @@ final class DetectorTests: XCTestCase {
     }
 
     func testWellBackedPrefixFlipsOnTheFly() {
+        // "ghb" -> "при": two dictionary entries sit behind "при"
+        // (привет, приветствие), which clears the junk-backed-prefix bar.
         let decision = makeDetector(minTargetCompletions: 2).evaluate(
-            buffer: "bea", currentLanguage: .english)
-        XCTAssertEqual(decision?.convertedText, "беа")
+            buffer: "ghb", currentLanguage: .english)
+        XCTAssertEqual(decision?.convertedText, "при")
         XCTAssertEqual(decision?.triggerRule, "en_invalid_prefix_ru_valid")
     }
 
@@ -390,7 +397,7 @@ final class UndoManagerTests: XCTestCase {
 
     func testAppendedTailIsErasedToo() {
         let manager = RukeyUndoManager()
-        manager.recordCorrection(decision())
+        manager.recordCorrection(decision(), appendedTail: " ")
         let calculation = manager.calculateUndo()
         // "при" plus a space, all erased before "ghb" goes back.
         XCTAssertEqual(calculation?.backspacesNeeded, 4)
@@ -525,7 +532,7 @@ This is Review Focus item 2.
 
 In `Sources/RukeyCore/RukeyConfig.swift`:
 
-- Add stored properties with these exact names and defaults: `excludedWords: [String]`, `excludeTerminals: Bool`, `launchAtLogin: Bool`, `autoLearnThreshold: Int`, `notifyOnEveryUndo: Bool`, `showCorrectionFlash: Bool`, `minPrefixLength: Int`. Defaults: empty array, `false`, `false`, `3`, `true`, `true`, `3`. User-taught words are **not** in this file — they live in `custom.json`, owned by Task 4.
+- Add stored properties with these exact names and defaults: `excludedWords: [String]`, `excludeTerminals: Bool`, `launchAtLogin: Bool`, `autoLearnThreshold: Int`, `notifyOnEveryUndo: Bool`, `showCorrectionFlash: Bool`, `minPrefixLength: Int`. Defaults: empty array, `false`, `false`, `3`, `true`, `true`, `3`. **All of them `public var`** — Task 8's tests mutate `excludedWords` and `excludedBundleIDs` on a loaded config, so `let` will not compile there. User-taught words are **not** in this file — they live in `custom.json`, owned by Task 4.
 - Change the private decoder shape to make every new key optional so an older file still decodes.
 - Change `load(excludeTerminalsFlag:extraBundleIDs:verbose:)` to `load(excludeTerminalsFlag:extraBundleIDs:verbose:configFileURL:logBuffer:)` with both new parameters defaulted to `RukeyConfig.configFileURL` and `LogBuffer.shared`. The existing call in `Sources/RukeyApp/main.swift:42` must keep compiling.
 - When decoding fails or the file is absent, do not change behaviour — keep the flag-only result — but append a `.warn` line to `logBuffer` naming the file URL and the failure. Absent file: no warning.
@@ -842,8 +849,12 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
     }
 
     func testTaughtWordDoesNotLicenseReverseConversion() {
-        // Teaching a word teaches what may be typed, not what it may become.
+        // Teaching a word teaches what may be typed, not what it may become:
+        // the taught Russian word is never itself flipped into Latin.
         let (detector, _) = makeTaughtDetector(words: ["абракадабра"])
+        XCTAssertFalse(
+            detector.customDictionary.contains("pfjprplpfjp"),
+            "the Latin form must not be taught implicitly")
         XCTAssertNil(detector.evaluateFullWord(
             buffer: "абракадабра", currentLanguage: .russian))
     }
@@ -884,6 +895,7 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
             detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english),
             baseline)
     }
+```
 
 - [ ] **Step 2: Run the tests to see them fail**
 
@@ -898,14 +910,26 @@ Create `Sources/RukeyCore/CustomDictionary.swift` with the same swappable-`Trie`
 
 In `Detector.init` add `customDictionary: CustomDictionary = CustomDictionary()` after `wordFilter`, and store it as `public let customDictionary: CustomDictionary`.
 
-In `decisionIfMistyped(word:bufferLang:fullWord:)` (`Detector.swift:51`), widen **only the `isCurrentValid` side** in both branches:
+In `decisionIfMistyped(word:bufferLang:fullWord:)` (`Detector.swift:51`), widen **both sides** in both branches with the custom dictionary, and waive the junk-backed-prefix gate for custom-backed targets:
 
 - Russian branch: `isCurrentValid` becomes
   `ruTrie.contains(word) || customDictionary.contains(word)` when `fullWord` is true, and
   `ruTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)` when it is false.
 - English branch: the same with `enTrie`.
+- `isConvertedValid` likewise becomes `enTrie.contains(converted) || customDictionary.contains(converted)`
+  (or the matching `hasPrefix` / `isPrefixOfKnown` pair on the on-the-fly path).
+- On the on-the-fly path only, skip the `countCompletions` junk gate when
+  `customDictionary` backs the converted prefix — a word the user taught is by
+  definition a real word, which is exactly what that gate is there to establish.
 
-Leave `isConvertedValid` trie-only. A taught word licenses what may be **typed**, never what a word may be **converted into** — otherwise teaching `привет` would silently block `hello` from ever appearing.
+Why both sides: teaching `абракадабра` has to make `pfjprplpfjp` convert (that is
+the feature the spec asks for), and it also has to stop `абракадабра` itself from
+being flipped back. Widening `isConvertedValid` can only ever *enable* a
+conversion — it cannot block one — so it carries none of the "teaching `привет`
+would silently block `hello`" risk that widening `isCurrentValid` carries.
+
+Leave `wordFilter` out of this method entirely; the exclusion filter is checked
+before the trie work, per Task 3.
 
 - [ ] **Step 5: Run the tests to see them pass**
 
@@ -1058,11 +1082,13 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift` — this pins Review Focus 
 
 ```swift
     func testSecondCorrectionInOneWordSupersedesTheFirst() {
+        // An on-the-fly flip, then a boundary correction: the manager keeps only
+        // the latest, so one Option tap undoes "тест", never both.
         let detector = makeDetector(minTargetCompletions: 2)
-        let first = detector.evaluate(buffer: "bea", currentLanguage: .english)
-        let second = detector.evaluateFullWord(buffer: "bebra", currentLanguage: .russian)
-        XCTAssertEqual(first?.convertedText, "беа")
-        XCTAssertEqual(second?.convertedText, "bebra")
+        let first = detector.evaluate(buffer: "ghb", currentLanguage: .english)
+        let second = detector.evaluateFullWord(buffer: "ncnt", currentLanguage: .english)
+        XCTAssertEqual(first?.convertedText, "при")
+        XCTAssertEqual(second?.convertedText, "тест")
         XCTAssertNotEqual(first?.originalText, second?.originalText)
     }
 ```
@@ -1195,9 +1221,9 @@ In `Sources/RukeyCore/EventTapManager.swift`:
 
 - Replace the inline `eventMask` computation at `:74-76` with `TapPolicy.eventMask`.
 - At the top of `handleEvent`, after the `tapDisabledByTimeout` branch and before any other work, add: if `TapPolicy.isUndoResettingEvent(type) { undoManager.clear(); return pass(event) }`.
-- In `handleOptionTap()` (`:162`), guard the else branch — the layout toggle — with `TapPolicy.shouldToggleLayoutOnOptionTap(isSecureInputActive: secureMonitor.isSecureInputActive)`. When it returns false, emit `onOptionIgnored?("secure_input_active")` and clear the buffer instead of toggling.
+- In `handleOptionTap()` (`:162`), guard the else branch — the layout toggle — with `TapPolicy.shouldToggleLayoutOnOptionTap(isSecureInputActive: secureMonitor.isSecureInputActive())`. When it returns false, emit `onOptionIgnored?("secure_input_active")` and clear the buffer instead of toggling.
 
-`SecureInputMonitor` must expose a synchronous `isSecureInputActive` for this; if it only has `shouldBypassForActiveApplication()`, add a separate read-only accessor that calls `IsSecureEventInputEnabled()` and does not consider the app exclusion list — Secure Input and app exclusions are different questions.
+`SecureInputMonitor.isSecureInputActive()` already exists (`SecureInputMonitor.swift:56`) and answers exactly this question; no new accessor is needed. It must stay distinct from `shouldBypassForActiveApplication()`, which also consults the app exclusion list — Secure Input and app exclusions are different questions.
 
 - [ ] **Step 5: Make the app-exclusion settings mutable**
 
@@ -1337,33 +1363,38 @@ Append to `Tests/RukeyCoreTests/StrikeStoreTests.swift`:
 
 ```swift
 final class UndoLearningTests: XCTestCase {
+    /// Records config writes. A reference box, because `configWriter` is
+    /// `@escaping @Sendable` and Swift 6 forbids capturing a mutable local in it.
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [Set<String>] = []
+        func record(_ words: Set<String>) { lock.withLock { stored.append(words) } }
+        var writes: [Set<String>] { lock.withLock { stored } }
+    }
+
     private struct Harness {
         let controller: UndoLearningController
         let filter: WordFilter
-        let buffer: LogBuffer
-        var persisted: [Set<String>] = []
-        var threshold = 3
-        var notify = true
+        let recorder: Recorder
+        var persisted: [Set<String>] { recorder.writes }
     }
 
     private func makeHarness(words: Set<String> = []) -> Harness {
         let store = StrikeStore(fileURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("learned-\(UUID().uuidString).json"))
         let filter = WordFilter(words: words)
-        let buffer = LogBuffer()
-        var persisted: [Set<String>] = []
-        let harness = Harness(
+        let recorder = Recorder()
+        return Harness(
             controller: UndoLearningController(
                 strikeStore: store,
                 wordFilter: filter,
                 thresholdProvider: { 3 },
                 notifyProvider: { true },
-                configWriter: { persisted.append($0) }
+                configWriter: { recorder.record($0) }
             ),
             filter: filter,
-            buffer: buffer
+            recorder: recorder
         )
-        return harness
     }
 
     func testNilUndoIsIgnored() {
@@ -1392,19 +1423,19 @@ final class UndoLearningTests: XCTestCase {
         let store = StrikeStore(fileURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("learned-\(UUID().uuidString).json"))
         let filter = WordFilter()
-        var writes: [Set<String>] = []
+        let recorder = Recorder()
         let controller = UndoLearningController(
             strikeStore: store,
             wordFilter: filter,
             thresholdProvider: { 3 },
             notifyProvider: { true },
-            configWriter: { writes.append($0) }
+            configWriter: { recorder.record($0) }
         )
         for _ in 0..<5 {
             controller.handleUndo((original: "ghb", converted: "при"))
         }
-        XCTAssertEqual(writes.count, 1)
-        XCTAssertEqual(writes.first, ["ghb"])
+        XCTAssertEqual(recorder.writes.count, 1)
+        XCTAssertEqual(recorder.writes.first, ["ghb"])
     }
 
     func testThresholdZeroNeverLearns() {
@@ -1478,16 +1509,16 @@ final class UndoLearningTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [ ] **Step 3: Run the tests to see them fail**
 
 Run: `swift test --filter StrikeStoreTests 2>&1 | tail -20`
 Expected: FAIL — `cannot find 'StrikeStore' in scope`.
 
-- [ ] **Step 3: Implement `StrikeStore`**
+- [ ] **Step 4: Implement `StrikeStore`**
 
 Create `Sources/RukeyCore/StrikeStore.swift`. On-disk shape is `{"strikes": {"ghb": 2}}`. Initialiser signature is `init(fileURL: URL, logBuffer: LogBuffer = .shared)`. Load under the lock in `init`; a missing file is silent, a corrupt file logs a `.warn` and starts empty. `registerUndo` increments, writes atomically (`Data.write(to:options:.atomic)`), and returns the new count. Guard all state with `NSLock.withLock`.
 
-- [ ] **Step 4: Implement `UndoLearningController`**
+- [ ] **Step 5: Implement `UndoLearningController`**
 
 Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond its dependencies. `handleUndo` does, in order:
 
@@ -1498,17 +1529,17 @@ Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond
 
 The exact strings are load-bearing: the GUI renders these lines in the menu, and `testLogsThePairInMenuForm` pins them character for character.
 
-- [ ] **Step 5: Run the tests to see them pass**
+- [ ] **Step 6: Run the tests to see them pass**
 
 Run: `swift test 2>&1 | tail -20`
 Expected: PASS.
 
-- [ ] **Step 6: Verify the CLI still builds**
+- [ ] **Step 7: Verify the CLI still builds**
 
 Run: `swift build 2>&1 | tail -5`
 Expected: `Build complete!` — nothing in `Sources/RukeyApp/` changed in this task, so the CLI behaviour is untouched.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add Sources/RukeyCore/StrikeStore.swift Sources/RukeyCore/UndoLearningController.swift Tests/
@@ -1609,7 +1640,7 @@ Expected: FAIL — `cannot find 'RukeyEngine' in scope`.
 
 - [ ] **Step 3: Implement `RukeyEngine`**
 
-Create `Sources/RukeyCore/DaemonBootstrap.swift`. `init` performs, in order: load config → build `WordFilter` from `config.excludedWords` → build `CustomDictionary` from `config.customWords` → build `StrikeStore` at `~/.config/rukey/learned.json` → build the dictionaries via `DictionaryLoader.shared` and throw when either trie has `wordCount == 0` → build `Detector` with all injected dependencies → build `SecureInputMonitor` → build `EventTapManager`. It must not start the tap; `EventTapManager.start()` stays a separate call the entry point makes.
+Create `Sources/RukeyCore/DaemonBootstrap.swift`. `init` performs, in order: load config → build `WordFilter` from `config.excludedWords` → build `CustomDictionary(fileURL: customDictionaryFileURL)` (it reads `custom.json` itself in `init`; there is deliberately **no** `customWords` key in `exclude.json`) → build `StrikeStore` at `strikeStoreFileURL` → build the dictionaries via `DictionaryLoader.shared` and throw when either trie has `wordCount == 0` → build `Detector` with all injected dependencies → build `SecureInputMonitor` → build `EventTapManager`. It must not start the tap; `EventTapManager.start()` stays a separate call the entry point makes.
 
 - [ ] **Step 4: Buffer logger output**
 
