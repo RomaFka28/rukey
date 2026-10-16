@@ -401,4 +401,16 @@ final class DetectorTests: XCTestCase {
         }
         XCTAssertEqual(manager.calculateUndo()?.textToRestore, "ntcn")
     }
+
+    func testMinPrefixLengthIsSettableAndTakesEffectImmediately() {
+        // Spec §5: the settings window changes this without rebuilding the
+        // detector, because a rebuild means re-arming the tap and dropping input
+        // while it is down. "gh" -> "пр" is a real prefix of привет/приветствие,
+        // so at a bar of 2 the only thing keeping it from flipping is its length.
+        let detector = makeDetector(minTargetCompletions: 2, minPrefixLength: 3)
+        XCTAssertNil(detector.evaluate(buffer: "gh", currentLanguage: .english))
+        detector.minPrefixLength = 2
+        XCTAssertEqual(
+            detector.evaluate(buffer: "gh", currentLanguage: .english)?.convertedText, "пр")
+    }
 }

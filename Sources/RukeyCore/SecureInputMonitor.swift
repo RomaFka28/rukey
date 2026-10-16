@@ -3,6 +3,11 @@ import Carbon
 import Foundation
 
 public final class SecureInputMonitor: @unchecked Sendable {
+  // `@unchecked Sendable` is sound because the frontmost-app TTL cache is
+  // guarded by `cacheLock`, `excludeTerminals` and `customExcludedBundleIDs`
+  // by their own `settingsLock`, and `secureInputCheck`/`frontmostBundleID`
+  // are immutable `@Sendable` closures. Every path takes the two locks
+  // separately, never one while holding the other.
   public static let shared = SecureInputMonitor()
 
   /// Bundles that should ALWAYS be bypassed for security (password managers, Keychain).
@@ -26,8 +31,24 @@ public final class SecureInputMonitor: @unchecked Sendable {
     "com.termius.mac",
   ]
 
-  public let excludeTerminals: Bool
-  private let customExcludedBundleIDs: Set<String>
+  // The app-exclusion settings are mutable at runtime so the settings window
+  // can change them without rebuilding the tap: one `NSLock` guards both, kept
+  // separate from `cacheLock` (which guards the frontmost-app TTL cache and is
+  // never held together with this one). One uncontended acquisition per read is
+  // negligible next to the `IsSecureEventInputEnabled()` syscall already on the
+  // per-keystroke path.
+  private let settingsLock = NSLock()
+  private var storedExcludeTerminals: Bool
+  private var storedCustomExcludedBundleIDs: Set<String>
+
+  public var excludeTerminals: Bool {
+    get { settingsLock.withLock { storedExcludeTerminals } }
+    set { settingsLock.withLock { storedExcludeTerminals = newValue } }
+  }
+  public var customExcludedBundleIDs: Set<String> {
+    get { settingsLock.withLock { storedCustomExcludedBundleIDs } }
+    set { settingsLock.withLock { storedCustomExcludedBundleIDs = newValue } }
+  }
   private let secureInputCheck: @Sendable () -> Bool
   private let frontmostBundleID: @Sendable () -> String?
 
@@ -46,8 +67,8 @@ public final class SecureInputMonitor: @unchecked Sendable {
       NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
   ) {
-    self.excludeTerminals = excludeTerminals
-    self.customExcludedBundleIDs = customExcludedBundleIDs
+    self.storedExcludeTerminals = excludeTerminals
+    self.storedCustomExcludedBundleIDs = customExcludedBundleIDs
     self.secureInputCheck = secureInputCheck
     self.frontmostBundleID = frontmostBundleID
   }

@@ -23,9 +23,24 @@ public struct CorrectionDecision: Equatable, Sendable {
 }
 
 public final class Detector: @unchecked Sendable {
+    // `@unchecked Sendable` is sound because `enTrie`/`ruTrie`/
+    // `minTargetCompletions` are immutable after `init`, `minPrefixLength` is
+    // guarded by its own `NSLock`, and `wordFilter`/`customDictionary` are
+    // independent `@unchecked Sendable` types that guard their own state.
     public let enTrie: Trie
     public let ruTrie: Trie
-    public let minPrefixLength: Int
+
+    // Mutable at runtime so the settings window can change it without
+    // rebuilding the detector: a rebuild means re-arming the tap and dropping
+    // input while it is down. Every read goes through the lock — one
+    // uncontended acquisition per decision, the same cost the exclusion filter
+    // already pays.
+    private let prefixLengthLock = NSLock()
+    private var storedMinPrefixLength: Int
+    public var minPrefixLength: Int {
+        get { prefixLengthLock.withLock { storedMinPrefixLength } }
+        set { prefixLengthLock.withLock { storedMinPrefixLength = newValue } }
+    }
     /// Minimum dictionary completions behind a converted on-the-fly prefix.
     /// Filters junk-backed prefixes (`ghu` exists only via `ghul`): typos like
     /// `прг` no longer flip the layout mid-word. Boundary (full-word) path is
@@ -50,7 +65,7 @@ public final class Detector: @unchecked Sendable {
     ) {
         self.enTrie = enTrie
         self.ruTrie = ruTrie
-        self.minPrefixLength = minPrefixLength
+        self.storedMinPrefixLength = minPrefixLength
         self.minTargetCompletions = minTargetCompletions
         self.wordFilter = wordFilter
         self.customDictionary = customDictionary
