@@ -35,6 +35,13 @@
 #      ACL, so codesign never prompts). The certificate PEM is kept only for
 #      the trust step and is re-exported from the keychain when missing.
 #
+#   4. The plan says to import the certificate and key "into a temporary
+#      keychain"; this script imports them into the login keychain instead,
+#      where the identity has to live for its whole life: the Accessibility
+#      grant keys off the leaf certificate hash, so the identity must survive
+#      app rebuilds, and codesign finds it through the login keychain without
+#      extra flags or a search-list entry that a temporary keychain would need.
+#
 set -euo pipefail
 
 IDENTITY_NAME="Rukey Local Signing"
@@ -89,11 +96,15 @@ else
 fi
 
 echo "Trusting the certificate for code signing (user domain)..." >&2
-if ! security add-trusted-cert -r trustRoot -k "$LOGIN_KEYCHAIN" "$CERT_PEM"; then
+if ! trust_output="$(security add-trusted-cert -r trustRoot -k "$LOGIN_KEYCHAIN" "$CERT_PEM" 2>&1)"; then
+  echo "" >&2
+  if [ -z "$trust_output" ]; then
+    echo "error: macOS refused to add the trust setting for the certificate (no output)." >&2
+  else
+    echo "error: macOS refused to add the trust setting for the certificate:" >&2
+    printf '%s\n' "$trust_output" >&2
+  fi
   cat >&2 <<'EOF'
-
-error: macOS refused to add the trust setting for the certificate
-       ("SecTrustSettingsSetTrustSettings: The authorization was denied.").
 
 The identity is kept in the login keychain and will not be recreated.
 Run this script from a regular Terminal.app window — that session can show

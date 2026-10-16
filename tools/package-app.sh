@@ -46,13 +46,22 @@ echo "Building $PRODUCT_NAME (release)..." >&2
 swift build -c release
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
-# Check the packaging preconditions before touching dist/, so a failed run
-# cannot leave a half-assembled bundle behind.
+# Preconditions checked before dist/ is touched: the resource bundle, the
+# executable product and a trusted signing identity must all exist. A failure
+# in a later step (install, cp, codesign) can still leave a partial
+# dist/Rukey.app behind; the next run replaces it (see `rm -rf` below).
 if [ ! -d "$BIN_DIR/$RESOURCE_BUNDLE_NAME" ]; then
   echo "error: $BIN_DIR/$RESOURCE_BUNDLE_NAME was not produced." >&2
   echo "       Check the .process(\"Resources\") declaration for the RukeyCore" >&2
   echo "       target in Package.swift; SwiftPM names the bundle" >&2
   echo "       <Package>_<Target>.bundle." >&2
+  exit 1
+fi
+
+if [ ! -f "$BIN_DIR/$PRODUCT_NAME" ]; then
+  echo "error: $BIN_DIR/$PRODUCT_NAME was not produced." >&2
+  echo "       Check PRODUCT_NAME at the top of this script against the" >&2
+  echo "       executable products declared in Package.swift." >&2
   exit 1
 fi
 
