@@ -1548,6 +1548,7 @@ Spec §5 names **three** settings that are `let` today and must gain hot-reload 
 - Convert `minPrefixLength` from `public let` (`:28`) into `public var minPrefixLength: Int { get set }` — a computed property over a private stored property, guarded by a private `NSLock`. Every existing read (`candidateWord(from:minLength:)` at `:145` and `:155`) then goes through the lock automatically: one uncontended acquisition per decision, the same cost the exclusion filter already pays.
 - Keep `init`'s `minPrefixLength` parameter, so `RukeyEngine` (Task 8) and every existing call site keep compiling. Do not clamp here: `RukeyConfig` already validates 2...5 and the settings window clamps; the detector takes what it is given.
 - Do not rebuild the detector and do not re-arm the tap. Spec §5 forbids it — that window is one in which input is not intercepted — and it is the whole reason this setter exists.
+- `Detector`'s `@unchecked Sendable` (`Detector.swift:25`) has no justification comment at all — it never had one, and this task is what makes it necessary. Give it one in the same spirit as the `SecureInputMonitor` comment above and `CustomDictionary`'s own: `enTrie`/`ruTrie`/`minTargetCompletions` are immutable after `init`, `minPrefixLength` is guarded by its own `NSLock`, and `wordFilter`/`customDictionary` are independent `@unchecked Sendable` types that guard their own state. It ships in the second commit with `Detector.swift`.
 
 - [ ] **Step 6: Run the tests to see them pass**
 
