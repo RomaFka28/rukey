@@ -31,12 +31,22 @@ public final class Detector: @unchecked Sendable {
     /// `прг` no longer flip the layout mid-word. Boundary (full-word) path is
     /// unaffected — exact matches always convert.
     public let minTargetCompletions: Int
+    /// Words the user never wants converted. Consulted by every path below, so an
+    /// excluded word is blocked from its first keystroke rather than corrected.
+    public let wordFilter: WordFilter
 
-    public init(enTrie: Trie, ruTrie: Trie, minPrefixLength: Int = 3, minTargetCompletions: Int = 3) {
+    public init(
+        enTrie: Trie,
+        ruTrie: Trie,
+        minPrefixLength: Int = 3,
+        minTargetCompletions: Int = 3,
+        wordFilter: WordFilter = WordFilter()
+    ) {
         self.enTrie = enTrie
         self.ruTrie = ruTrie
         self.minPrefixLength = minPrefixLength
         self.minTargetCompletions = minTargetCompletions
+        self.wordFilter = wordFilter
     }
 
     /// Common pre-step: isolate the trailing homogeneous script run and
@@ -49,6 +59,11 @@ public final class Detector: @unchecked Sendable {
     }
 
     private func decisionIfMistyped(word: String, bufferLang: Language, fullWord: Bool) -> CorrectionDecision? {
+        // Excluded words never convert, in either mode. Checked first, before any
+        // trie work, so a hit costs one prefix lookup and nothing else. This single
+        // gate covers both callers (on-the-fly `evaluate` and boundary
+        // `evaluateFullWord`), which pass the identical `word`.
+        guard !wordFilter.isPrefixOfExcluded(word) else { return nil }
         if bufferLang == .russian {
             let converted = LayoutConverter.toEnglish(word)
             let isCurrentValid = fullWord ? ruTrie.contains(word) : ruTrie.hasPrefix(word)
@@ -136,6 +151,11 @@ public final class Detector: @unchecked Sendable {
         // the real guard here (EN words like `he` self-protect via `contains`).
         guard core.count >= 2 else { return nil }
         guard !leading.isEmpty || !trailing.isEmpty else { return nil }
+        // Same exclusion gate as the run path, on the extracted core rather than the
+        // raw token: `"ghbdtn,"` must be blocked by excluding `"ghbdtn"`, not by
+        // excluding the token with its comma attached. Exact match here, not prefix —
+        // the whole token is already known, only its edges are unknown.
+        guard !wordFilter.isExcluded(core) else { return nil }
         guard let bufferLang = LayoutConverter.detectAlphabet(core) else { return nil }
 
         func convert(_ text: String, _ lang: Language) -> String {

@@ -71,4 +71,72 @@ final class DetectorTests: XCTestCase {
     func testTrailingPunctuationOnlyRunIsIgnored() {
         XCTAssertNil(makeDetector().evaluateFullWord(buffer: "hello!", currentLanguage: .english))
     }
+
+    // MARK: - Word filter
+
+    private func makeFilteredDetector(
+        excluding words: Set<String>
+    ) -> (Detector, WordFilter) {
+        let filter = WordFilter(words: words)
+        let detector = Detector(
+            enTrie: TestDictionaries.enTrie,
+            ruTrie: TestDictionaries.ruTrie,
+            minPrefixLength: 3,
+            minTargetCompletions: 2,
+            wordFilter: filter
+        )
+        return (detector, filter)
+    }
+
+    func testExcludedFullWordIsNotConverted() {
+        let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+    }
+
+    func testExcludedWordStopsTheMidWordFlip() {
+        let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
+        XCTAssertNil(detector.evaluate(buffer: "ghb", currentLanguage: .english))
+    }
+
+    func testCapitalisedExcludedWordIsStillExcluded() {
+        let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "Ghbdtn", currentLanguage: .english))
+    }
+
+    func testExclusionIsPerInputNotPerResult() {
+        // "привет" is in the filter only as the Russian spelling, so the Latin
+        // typing that produces it is unaffected.
+        let (detector, _) = makeFilteredDetector(excluding: ["привет"])
+        let decision = detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english)
+        XCTAssertEqual(decision?.convertedText, "привет")
+    }
+
+    func testUnrelatedWordsKeepConverting() {
+        let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+        // "ntcn" is the Latin typing of "тест"; excluding "ghbdtn" must not stop it.
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "ntcn", currentLanguage: .english)?.convertedText,
+            "тест")
+    }
+
+    func testPunctuatedExcludedWordIsBlockedLikeTheBareWord() {
+        let (detector, _) = makeFilteredDetector(excluding: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn,", currentLanguage: .english))
+        XCTAssertNil(detector.evaluateFullWord(buffer: ",ghbdtn", currentLanguage: .english))
+    }
+
+    func testEmptyFilterLeavesEveryBehaviourUnchanged() {
+        let (detector, _) = makeFilteredDetector(excluding: [])
+        XCTAssertEqual(
+            detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english)?.convertedText,
+            "привет")
+    }
+
+    func testFilterSwappedAtRuntimeTakesEffectImmediately() {
+        let (detector, filter) = makeFilteredDetector(excluding: [])
+        XCTAssertNotNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+        filter.replaceAll(with: ["ghbdtn"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
+    }
 }
