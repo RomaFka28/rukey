@@ -151,11 +151,13 @@ public final class Detector: @unchecked Sendable {
         // the real guard here (EN words like `he` self-protect via `contains`).
         guard core.count >= 2 else { return nil }
         guard !leading.isEmpty || !trailing.isEmpty else { return nil }
-        // Same exclusion gate as the run path, on the extracted core rather than the
-        // raw token: `"ghbdtn,"` must be blocked by excluding `"ghbdtn"`, not by
-        // excluding the token with its comma attached. Exact match here, not prefix —
-        // the whole token is already known, only its edges are unknown.
-        guard !wordFilter.isExcluded(core) else { return nil }
+        // Same exclusion gate as the run path — same predicate, not a weaker one —
+        // and on the extracted core rather than the raw token, so `"ghbdtn,"` is
+        // blocked by excluding `"ghbdtn"` rather than the comma-attached token.
+        // Prefix, not exact: the *token* is complete but the *word* need not be.
+        // `"ntcn"` is complete, yet excluding `"ntcnbhjdfnm"` must stop it here too,
+        // or the same typing converts on this path and is blocked on the run path.
+        guard !wordFilter.isPrefixOfExcluded(core) else { return nil }
         guard let bufferLang = LayoutConverter.detectAlphabet(core) else { return nil }
 
         func convert(_ text: String, _ lang: Language) -> String {

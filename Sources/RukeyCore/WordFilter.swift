@@ -3,11 +3,15 @@ import Foundation
 /// User-supplied list of words that must never be converted.
 ///
 /// Two questions are asked of the filter, and they are deliberately different:
-/// - `isPrefixOfExcluded` blocks the on-the-fly (mid-word) flip, so an excluded
-///   word is inert from its very first keystroke instead of being corrected and
-///   then re-typed in the source layout.
-/// - `isExcluded` blocks the whole-word (boundary) path, including the
-///   punctuation-wrapped token path, which needs an exact match.
+/// - `isPrefixOfExcluded` blocks the on-the-fly (mid-word) flip *and* the bare
+///   whole-word (boundary) run path, so an excluded word is inert from its very
+///   first keystroke instead of being corrected and then re-typed in the source
+///   layout. It also gates the punctuation-wrapped token path, so the three
+///   detector paths cannot disagree about the same typing.
+/// - `isExcluded` is the exact-membership query, for callers that already hold a
+///   complete word (tests, a settings check). The detector does not gate on it:
+///   an exact test is precisely what let an excluded word's *prefix* convert once,
+///   so every decision path uses `isPrefixOfExcluded` instead.
 ///
 /// Membership is checked against the *typed* word, never the conversion result:
 /// excluding `привет` leaves the Latin typing `ghbdtn` convertible, and excluding

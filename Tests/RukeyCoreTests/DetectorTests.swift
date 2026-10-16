@@ -126,6 +126,17 @@ final class DetectorTests: XCTestCase {
         XCTAssertNil(detector.evaluateFullWord(buffer: ",ghbdtn", currentLanguage: .english))
     }
 
+    func testExcludedPrefixIsBlockedOnThePunctuatedPathToo() {
+        // "ntcnbhjdfnm" is the Latin typing of "тестировать" and "ntcn" is a prefix
+        // of it — the Latin typing of "тест", which IS in the dictionary. Excluding
+        // the longer word must not let its prefix convert on the punctuated path,
+        // where the check has to be a prefix test, not an exact one.
+        let (detector, _) = makeFilteredDetector(excluding: ["ntcnbhjdfnm"])
+        XCTAssertNil(detector.evaluate(buffer: "ntcn", currentLanguage: .english))
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ntcn,", currentLanguage: .english))
+        XCTAssertNil(detector.evaluateFullWord(buffer: ",ntcn", currentLanguage: .english))
+    }
+
     func testEmptyFilterLeavesEveryBehaviourUnchanged() {
         let (detector, _) = makeFilteredDetector(excluding: [])
         XCTAssertEqual(
