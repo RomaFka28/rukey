@@ -827,43 +827,46 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
     }
 
     func testTaughtWordConvertsAtWordBoundary() {
-        let (detector, _) = makeTaughtDetector(words: ["абракадабра"])
+        // "заозкздзаоз" is exactly what "pfjprplpfjp" spells. The word must be
+        // comma-free: `б` sits on the comma key, so a word containing it types
+        // with an interior comma, which splits the script run and yields nil.
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
         let decision = detector.evaluateFullWord(
             buffer: "pfjprplpfjp", currentLanguage: .russian)
-        XCTAssertEqual(decision?.convertedText, "абракадабра")
+        XCTAssertEqual(decision?.convertedText, "заозкздзаоз")
     }
 
     func testTaughtWordAlsoEnablesTheMidWordFlip() {
-        let (detector, _) = makeTaughtDetector(words: ["абракадабра"])
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
         // Flipping at "pfj" is better UX than waiting for the boundary: the
-        // remaining keys then spell "акадабра" in the target layout and the
+        // remaining keys then spell "зкздзаоз" in the target layout and the
         // whole word lands correctly either way.
-        XCTAssertEqual(detector.evaluate(buffer: "pfj", currentLanguage: .russian)?.convertedText, "абр")
+        XCTAssertEqual(detector.evaluate(buffer: "pfj", currentLanguage: .russian)?.convertedText, "зао")
     }
 
     func testTaughtWordIsNotConvertedBack() {
         // A word the user taught in Russian must survive being read as English.
-        let (detector, _) = makeTaughtDetector(words: ["абракадабра"])
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
         XCTAssertNil(detector.evaluateFullWord(
-            buffer: "абракадабра", currentLanguage: .russian))
+            buffer: "заозкздзаоз", currentLanguage: .russian))
     }
 
     func testTaughtWordDoesNotLicenseReverseConversion() {
         // Teaching a word teaches what may be typed, not what it may become:
         // the taught Russian word is never itself flipped into Latin.
-        let (detector, _) = makeTaughtDetector(words: ["абракадабра"])
+        let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
         XCTAssertFalse(
             detector.customDictionary.contains("pfjprplpfjp"),
             "the Latin form must not be taught implicitly")
         XCTAssertNil(detector.evaluateFullWord(
-            buffer: "абракадабра", currentLanguage: .russian))
+            buffer: "заозкздзаоз", currentLanguage: .russian))
     }
 
     func testCustomDictionarySwappedAtRuntimeTakesEffectImmediately() {
         let (detector, dictionary) = makeTaughtDetector(words: [])
         XCTAssertNil(detector.evaluateFullWord(
             buffer: "pfjprplpfjp", currentLanguage: .russian))
-        dictionary.replaceAll(with: ["абракадабра"])
+        dictionary.replaceAll(with: ["заозкздзаоз"])
         XCTAssertNotNil(detector.evaluateFullWord(
             buffer: "pfjprplpfjp", currentLanguage: .russian))
     }
@@ -872,9 +875,9 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("custom-\(UUID().uuidString).json")
         let dictionary = CustomDictionary(fileURL: url)
-        dictionary.replaceAll(with: ["абракадабра"])
+        dictionary.replaceAll(with: ["заозкздзаоз"])
         let reloaded = CustomDictionary(fileURL: url)
-        XCTAssertTrue(reloaded.contains("абракадабра"))
+        XCTAssertTrue(reloaded.contains("заозкздзаоз"))
     }
 
     func testCorruptCustomFileStartsEmptyAndReports() {
@@ -883,7 +886,7 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
         try? "{ broken".write(to: url, atomically: true, encoding: .utf8)
         let buffer = LogBuffer()
         let dictionary = CustomDictionary(fileURL: url, logBuffer: buffer)
-        XCTAssertFalse(dictionary.contains("абракадабра"))
+        XCTAssertFalse(dictionary.contains("заозкздзаоз"))
         XCTAssertTrue(buffer.lines().contains { $0.level == .warn })
     }
 
@@ -922,8 +925,8 @@ In `decisionIfMistyped(word:bufferLang:fullWord:)` (`Detector.swift:51`), widen 
   `customDictionary` backs the converted prefix — a word the user taught is by
   definition a real word, which is exactly what that gate is there to establish.
 
-Why both sides: teaching `абракадабра` has to make `pfjprplpfjp` convert (that is
-the feature the spec asks for), and it also has to stop `абракадабра` itself from
+Why both sides: teaching `заозкздзаоз` has to make `pfjprplpfjp` convert (that is
+the feature the spec asks for), and it also has to stop `заозкздзаоз` itself from
 being flipped back. Widening `isConvertedValid` can only ever *enable* a
 conversion — it cannot block one — so it carries none of the "teaching `привет`
 would silently block `hello`" risk that widening `isCurrentValid` carries.
@@ -1618,10 +1621,10 @@ final class DaemonBootstrapTests: XCTestCase {
     func testCustomWordsReachTheDetector() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("custom-\(UUID().uuidString).json")
-        CustomDictionary(fileURL: url).replaceAll(with: ["абракадабра"])
+        CustomDictionary(fileURL: url).replaceAll(with: ["заозкздзаоз"])
         let engine = try RukeyEngine(
             config: makeConfig(), verbose: false, customDictionaryFileURL: url)
-        XCTAssertTrue(engine.customDictionary.contains("абракадабра"))
+        XCTAssertTrue(engine.customDictionary.contains("заозкздзаоз"))
     }
 
     func testBundleIDExclusionsReachTheSecureMonitor() throws {
