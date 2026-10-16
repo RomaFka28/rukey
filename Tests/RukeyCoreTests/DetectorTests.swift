@@ -344,8 +344,10 @@ final class DetectorTests: XCTestCase {
     }
 
     func testTaughtLatinWordSurvivesAtTheWordBoundary() {
-        // The same widening on the boundary path, mirroring the `руддщ` case on
-        // the English side.
+        // Pins the English branch's `fullWord` `isCurrentValid` widening, the
+        // mirror of the Russian `руддщ` boundary case: `ghbdtn` is not in
+        // `enTrie`, so nothing but the widening makes the taught word valid at the
+        // boundary — without it the flip fires and returns `привет`.
         let (detector, _) = makeTaughtDetector(words: ["ghbdtn"])
         XCTAssertNil(detector.evaluateFullWord(buffer: "ghbdtn", currentLanguage: .english))
     }
@@ -368,7 +370,10 @@ final class DetectorTests: XCTestCase {
         // a *file* where the directory must be created, so the save throws.
         let blocker = FileManager.default.temporaryDirectory
             .appendingPathComponent("blocker-\(UUID().uuidString)")
-        try? Data().write(to: blocker)
+        // The blocker must exist, or the scenario silently changes: a failed write
+        // would leave no file, `createDirectory` would then succeed and the save
+        // would land, failing the test for the wrong reason.
+        XCTAssertTrue(FileManager.default.createFile(atPath: blocker.path, contents: Data()))
         let buffer = LogBuffer()
         let dictionary = CustomDictionary(
             fileURL: blocker.appendingPathComponent("custom.json"), logBuffer: buffer)

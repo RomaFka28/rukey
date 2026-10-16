@@ -81,11 +81,12 @@ public final class Detector: @unchecked Sendable {
             let isCurrentValid = fullWord
                 ? ruTrie.contains(word) || customDictionary.contains(word)
                 : ruTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
-            // One lookup, not two: `isPrefixOfKnown(converted)` answers the
-            // on-the-fly arm of `isConvertedValid` *and* the junk-gate waiver, so
-            // hoisting it saves a lock acquisition and a trie walk per keystroke.
-            // The `fullWord ? false` arm keeps the boundary path from gaining a
-            // lookup it never had.
+            // One lookup, reused by the on-the-fly arm of `isConvertedValid` and the
+            // junk-gate waiver. Apart, the two uses could ask the same question twice
+            // in one decision and could read different snapshots of the taught words;
+            // together it is one lookup on every on-the-fly decision. The
+            // `fullWord ? false` arm keeps the boundary path from gaining a lookup it
+            // never had.
             let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
             let isConvertedValid = fullWord
                 ? enTrie.contains(converted) || customDictionary.contains(converted)
