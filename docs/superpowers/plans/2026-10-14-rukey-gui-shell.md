@@ -347,6 +347,14 @@ final class StatusMenuModelTests: XCTestCase {
         XCTAssertEqual(model.statusTitle, "Нет прав Accessibility")
     }
 
+    func testStatusTitleWhenGrantedButNotRunning() {
+        let model = StatusMenuModel(
+            permission: .granted, running: false, secureInputActive: false,
+            language: .russian, lastCorrection: nil, learningBanner: nil,
+            launchAtLogin: false, excludedBundleIDs: [])
+        XCTAssertEqual(model.statusTitle, "Не запущено")
+    }
+
     func testStatusTitleUnderSecureInput() {
         let model = StatusMenuModel(
             permission: .granted, running: true, secureInputActive: true,
@@ -388,7 +396,7 @@ Expected: FAIL — `cannot find 'StatusMenuModel' in scope`.
 
 - [ ] **Step 3: Implement the menu model**
 
-`StatusMenuModel` is a `@MainActor` struct with stored properties matching the test's arguments, plus computed titles carrying the exact strings from the spec §8.1: `Работает`, `Нет прав Accessibility`, `Приостановлено: защищённый ввод`. `learningBannerTitle` renders the `Запомнено: … больше не станет …` line, derived from the same string `UndoLearningController` logs. Truncation is by `String.prefix` plus `…`.
+`StatusMenuModel` is a `@MainActor` struct with stored properties matching the test's arguments, plus computed titles carrying the exact strings from the spec §8.1: `Работает`, `Нет прав Accessibility`, `Приостановлено: защищённый ввод`. A grant that is present but whose tap is not running (a failed `tapManager.start()`) reads `Не запущено` instead of `Работает`. `learningBannerTitle` renders the `Запомнено: … больше не станет …` line, derived from the same string `UndoLearningController` logs. Truncation is by `String.prefix` plus `…`.
 
 - [ ] **Step 4: Draw the icon**
 
@@ -400,7 +408,7 @@ Expected: FAIL — `cannot find 'StatusMenuModel' in scope`.
 
 - [ ] **Step 5: Build the status item**
 
-`StatusItemController` owns an `NSStatusItem` with a variable length, sets `button.image` from `Icon.templateImage()`, and rebuilds the menu from `StatusMenuModel` on every relevant change. Menu order is exactly: status (disabled), current layout, last correction, learned-word banner, separator, launch-at-login checkbox, `Настройки…`, `Журнал…`, separator, `Выйти`. The banner, when present, carries a `Убрать` submenu item that removes the word from the filter and writes the config.
+`StatusItemController` owns an `NSStatusItem` with a variable length, sets `button.image` from `Icon.templateImage()`, and rebuilds the menu from `StatusMenuModel` on every relevant change. Menu order is exactly: status (disabled), current layout, last correction, learned-word banner, separator, launch-at-login checkbox, `Настройки…`, `Журнал…`, separator, `Выйти`. The banner, when present, carries a `Убрать` submenu item that removes the word from the filter and writes the config. Engine-build and tap-start failures must surface here: when `AppDelegate`'s `tapManager.start()` returns false or the engine fails to build, the status line reads `Не запущено` and the Task 2 `LogBuffer` line stays as the record.
 
 - [ ] **Step 6: Wire learning events into the banner**
 
@@ -418,7 +426,7 @@ Launch the packaged app with a grant in place. Expect: a lightning icon in the m
 - [ ] **Step 9: Commit**
 
 ```bash
-git add Package.swift Sources/RukeyGUI/
+git add Package.swift Sources/RukeyGUI/ Tests/RukeyGUITests/
 git commit -m "Add template menu-bar icon and the status menu model"
 git push
 ```
