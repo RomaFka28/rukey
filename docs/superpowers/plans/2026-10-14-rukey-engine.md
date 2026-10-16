@@ -1605,6 +1605,11 @@ public final class StrikeStore: @unchecked Sendable {
 the only writer. The threshold lives in the caller — `StrikeStore` only counts.
 
 ```swift
+public enum LearningNotice: Equatable, Sendable {
+    case undo(prefix: String, converted: String, count: Int, threshold: Int)
+    case learned(prefix: String, converted: String)
+}
+
 public final class UndoLearningController: @unchecked Sendable {
     public init(
         strikeStore: StrikeStore,
@@ -1614,6 +1619,11 @@ public final class UndoLearningController: @unchecked Sendable {
         configWriter: @escaping @Sendable (Set<String>) -> Void,
         logBuffer: LogBuffer = .shared
     )
+    /// The two lines this controller writes, as data: `.undo` mirrors the
+    /// `Отменено:` line, `.learned` mirrors the `.warn` `Запомнено:` line, both
+    /// emitted at the same point under the same condition. The hub at the end of
+    /// this plan (Task 9) subscribes to this instead of parsing the log.
+    public var onNotice: ((LearningNotice) -> Void)?
     public func handleUndo(_ pair: (original: String, converted: String)?)
 }
 ```
@@ -1622,6 +1632,9 @@ public final class UndoLearningController: @unchecked Sendable {
 threshold is non-zero and the new count reaches it **exactly**, it adds the prefix
 to the filter, calls `configWriter`, and logs the learned rule. Reaching exactly
 rather than at-or-above keeps a fourth undo from rewriting the config again.
+Every log emission has a data twin on `onNotice`, emitted at the same point under
+the same condition — a consumer reads exactly what the console prints, never a
+re-derivation of it.
 
 - [ ] **Step 1: Write the failing StrikeStore tests**
 
@@ -1848,6 +1861,54 @@ final class UndoLearningTests: XCTestCase {
         controller.handleUndo((original: "ghb", converted: "при"))
         XCTAssertFalse(buffer.lines().contains { $0.text.contains("Отменено") })
     }
+
+    private final class NoticeRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [LearningNotice] = []
+        func record(_ notice: LearningNotice) { lock.withLock { stored.append(notice) } }
+        var notices: [LearningNotice] { lock.withLock { stored } }
+    }
+
+    func testNoticesMirrorTheTwoLines() {
+        let store = StrikeStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("learned-\(UUID().uuidString).json"))
+        let filter = WordFilter()
+        let recorder = NoticeRecorder()
+        let controller = UndoLearningController(
+            strikeStore: store,
+            wordFilter: filter,
+            thresholdProvider: { 3 },
+            notifyProvider: { true },
+            configWriter: { _ in }
+        )
+        controller.onNotice = { recorder.record($0) }
+        for _ in 0..<3 {
+            controller.handleUndo((original: "ghb", converted: "при"))
+        }
+        XCTAssertEqual(recorder.notices, [
+            .undo(prefix: "ghb", converted: "при", count: 1, threshold: 3),
+            .undo(prefix: "ghb", converted: "при", count: 2, threshold: 3),
+            .learned(prefix: "ghb", converted: "при"),
+        ])
+        XCTAssertTrue(filter.isExcluded("ghb"))
+    }
+
+    func testLearnedNoticeSurvivesNotificationsBeingOff() {
+        let store = StrikeStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("learned-\(UUID().uuidString).json"))
+        let recorder = NoticeRecorder()
+        let controller = UndoLearningController(
+            strikeStore: store,
+            wordFilter: WordFilter(),
+            thresholdProvider: { 2 },
+            notifyProvider: { false },
+            configWriter: { _ in }
+        )
+        controller.onNotice = { recorder.record($0) }
+        controller.handleUndo((original: "ghb", converted: "при"))
+        controller.handleUndo((original: "ghb", converted: "при"))
+        XCTAssertEqual(recorder.notices, [.learned(prefix: "ghb", converted: "при")])
+    }
 }
 ```
 
@@ -1862,12 +1923,12 @@ Create `Sources/RukeyCore/StrikeStore.swift`. On-disk shape is `{"strikes": {"gh
 
 - [ ] **Step 5: Implement `UndoLearningController`**
 
-Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond its dependencies. Like every new `@unchecked Sendable` type it carries a comment justifying the attribute; the honest statement here is that every stored property is immutable and itself `Sendable`, so `@unchecked` is conservative rather than load-bearing. `handleUndo` does, in order:
+Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond its dependencies. Like every new `@unchecked Sendable` type it carries a comment justifying the attribute; the honest statement here is that every stored property is immutable and itself `Sendable` **except `onNotice`** — a set-once-before-the-tap-starts, then read-on-the-tap-thread hook following the same pattern (and the same lack of a `@Sendable` annotation on the property) as `EventTapManager`'s four callbacks — so `@unchecked` stays conservative rather than load-bearing. `handleUndo` does, in order:
 
 1. `guard let pair else { return }`.
 2. `let count = strikeStore.registerUndo(key: pair.original)`.
-3. `let threshold = thresholdProvider()`. When `threshold > 0 && count == threshold`: `wordFilter.replaceAll(with: wordFilter.words.union([pair.original]))`, `configWriter(wordFilter.words)`, then append a `.warn` line reading exactly `Запомнено: \(pair.original) больше не станет \(pair.converted)`.
-4. Otherwise, when `notifyProvider()` is true, append an `.info` line reading exactly `Отменено: \(pair.original) → \(pair.converted) (\(count)/\(threshold))`.
+3. `let threshold = thresholdProvider()`. When `threshold > 0 && count == threshold`: `wordFilter.replaceAll(with: wordFilter.words.union([pair.original]))`, `configWriter(wordFilter.words)`, append a `.warn` line reading exactly `Запомнено: \(pair.original) больше не станет \(pair.converted)`, and call `onNotice?(.learned(prefix: pair.original, converted: pair.converted))`.
+4. Otherwise, when `notifyProvider()` is true, append an `.info` line reading exactly `Отменено: \(pair.original) → \(pair.converted) (\(count)/\(threshold))` and call `onNotice?(.undo(prefix: pair.original, converted: pair.converted, count: count, threshold: threshold))`.
 
 The exact strings are load-bearing: the GUI renders these lines in the menu, and `testLogsThePairInMenuForm` pins them character for character.
 
@@ -1896,9 +1957,11 @@ git push
 **Files:**
 - Create: `Sources/RukeyCore/DaemonBootstrap.swift`
 - Modify: `Sources/RukeyCore/KeyCodes.swift:19-35`
+- Modify: `Sources/RukeyCore/RukeyConfig.swift`
 - Modify: `Sources/RukeyApp/main.swift:42-148`
 - Create: `Tests/RukeyCoreTests/DaemonBootstrapTests.swift`
 - Create: `Tests/RukeyCoreTests/RukeyLoggerTests.swift`
+- Modify: `Tests/RukeyCoreTests/RukeyConfigTests.swift`
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–7.
@@ -2048,11 +2111,89 @@ An empty dictionary must not be a silent success. Throw `RukeyEngineError.emptyD
 
 In `Sources/RukeyCore/KeyCodes.swift`, extend `RukeyLogger` to `warn(_:)` and `error(_:)` alongside the existing `debug` and `info`. All four append to the log buffer with the matching level; `debug` appends only when `isVerbose`; `info`, `warn` and `error` also keep writing to standard output when `mirrorToStandardOutput` is true, which must stay the default so `swift run rukey` keeps behaving as it does today. The initialiser becomes `public init(isVerbose: Bool = false, mirrorToStandardOutput: Bool = true, logBuffer: LogBuffer = .shared)` — `mirrorToStandardOutput` is a settable `public var`, and the buffer is injectable so `RukeyLoggerTests` can watch it without writing into the daemon's own buffer. Existing call sites that pass only `isVerbose:` must keep compiling unchanged.
 
-- [ ] **Step 5: Collapse `main.swift` onto the bootstrap**
+- [ ] **Step 5: Add the one config writer**
 
-In `Sources/RukeyApp/main.swift`, replace lines `:70`–`:118` — the dictionary loading, the detector/monitor/tap construction, and the four `tapManager.on…` callback assignments — with one `RukeyEngine` construction followed by the same four callbacks re-created (they close over `tapManager` and `printLangState`, so they cannot move inside the engine). `RukeyEngine.init` throws: wrap the construction in `do`/`catch` and, in `catch`, print the same two dictionary-failure lines the code prints today — `❌ English dictionary is missing or empty (words_en: got 0 words). Check Resources/words_en.txt.` when `resource == "words_en.txt"` and the Russian equivalent otherwise — then `exit(1)`, exactly as the current `:79-87` block does. Inside `onOptionUndo`, keep the existing print and add one line calling `learningController.handleUndo(tapManager.undoManager.lastUndone)`, constructing `learningController` from the engine's `strikeStore` and `wordFilter` plus closures reading the live config. Keep every CLI flag, the `--help` text, the `--check-permissions` behaviour and the `--test-conversion` samples byte-identical; the flag parsing at `:10-51`, the `printHelp` body and `runSampleConversions` at `:180-205` must not change.
+In `Sources/RukeyCore/RukeyConfig.swift`, add the single writer for the config schema. The GUI plan's settings window has two tabs that save settings, and each one growing its own encoder is how the two-writers defect starts (one writes `{"excludedWords": …}` and silently drops `excludedBundleIDs`). One whole-struct writer owns the schema:
 
-- [ ] **Step 6: Run the tests and the CLI**
+```swift
+/// Writes the whole config atomically to `url`, creating the `~/.config/rukey`
+/// directory when it does not exist. The one writer for this schema: callers
+/// mutate their own copy and hand it over whole, so no two writers can drop
+/// each other's fields. Keys outside the schema are not preserved — the file
+/// belongs to the app — and `verbose` is CLI-only and stays out of it.
+/// - Returns: `false`, and one `.warn` line, when the write fails.
+@discardableResult
+public static func write(
+    _ config: RukeyConfig,
+    to url: URL = RukeyConfig.configFileURL,
+    logBuffer: LogBuffer = LogBuffer.shared
+) -> Bool
+```
+
+It encodes exactly the eight keys `FileShape` reads, with `excludedBundleIDs` sorted so the output is stable, and writes with `Data.write(to:options: .atomic)`. The failure line follows `readFile`'s shape — the URL and the underlying error's description at `.warn`, the same level the custom dictionary's failed save uses.
+
+Append three tests to `Tests/RukeyCoreTests/RukeyConfigTests.swift`:
+
+```swift
+    func testWriteRoundTripsEveryField() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("exclude-\(UUID().uuidString).json")
+        let config = RukeyConfig(
+            excludedWords: ["ghbdtn"],
+            excludeTerminals: true,
+            excludedBundleIDs: ["com.example.app"],
+            launchAtLogin: true,
+            autoLearnThreshold: 2,
+            notifyOnEveryUndo: false,
+            showCorrectionFlash: false,
+            minPrefixLength: 5,
+            verbose: true
+        )
+        XCTAssertTrue(RukeyConfig.write(config, to: url))
+        let reloaded = RukeyConfig.load(
+            excludeTerminalsFlag: false,
+            extraBundleIDs: [],
+            verbose: false,
+            configFileURL: url
+        )
+        XCTAssertEqual(reloaded.excludedWords, ["ghbdtn"])
+        XCTAssertEqual(reloaded.excludedBundleIDs, ["com.example.app"])
+        XCTAssertTrue(reloaded.excludeTerminals)
+        XCTAssertTrue(reloaded.launchAtLogin)
+        XCTAssertEqual(reloaded.autoLearnThreshold, 2)
+        XCTAssertFalse(reloaded.notifyOnEveryUndo)
+        XCTAssertFalse(reloaded.showCorrectionFlash)
+        XCTAssertEqual(reloaded.minPrefixLength, 5)
+        // `verbose` is CLI-only: the file never carries it.
+        XCTAssertFalse(reloaded.verbose)
+    }
+
+    func testWriteCreatesTheConfigDirectory() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rukey-\(UUID().uuidString)/nested/exclude.json")
+        XCTAssertTrue(RukeyConfig.write(RukeyConfig(), to: url))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testWriteFailureIsReported() {
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blocker-\(UUID().uuidString)")
+        XCTAssertTrue(FileManager.default.createFile(atPath: blocker.path, contents: Data()))
+        let buffer = LogBuffer()
+        XCTAssertFalse(RukeyConfig.write(
+            RukeyConfig(), to: blocker.appendingPathComponent("exclude.json"),
+            logBuffer: buffer))
+        XCTAssertTrue(buffer.lines().contains {
+            $0.level == .warn && $0.text.contains(blocker.path)
+        })
+    }
+```
+
+- [ ] **Step 6: Collapse `main.swift` onto the bootstrap**
+
+In `Sources/RukeyApp/main.swift`, replace lines `:70`–`:118` — the dictionary loading, the detector/monitor/tap construction, and the four `tapManager.on…` callback assignments — with one `RukeyEngine` construction followed by the same four callbacks re-created (they close over `tapManager` and `printLangState`, so they cannot move inside the engine). `RukeyEngine.init` throws: wrap the construction in `do`/`catch` and, in `catch`, print the same two dictionary-failure lines the code prints today — `❌ English dictionary is missing or empty (words_en: got 0 words). Check Resources/words_en.txt.` when `resource == "words_en.txt"` and the Russian equivalent otherwise — then `exit(1)`, exactly as the current `:79-87` block does. Inside `onOptionUndo`, keep the existing print and add one line calling `learningController.handleUndo(tapManager.undoManager.lastUndone)`, constructing `learningController` from the engine's `strikeStore` and `wordFilter` plus closures reading the live config: `thresholdProvider: { config.autoLearnThreshold }`, `notifyProvider: { config.notifyOnEveryUndo }`, and `configWriter: { words in var updated = config; updated.excludedWords = words.sorted(); RukeyConfig.write(updated, to: RukeyConfig.configFileURL, logBuffer: LogBuffer.shared) }` — the writer from Step 5 is what makes learned words survive a restart, and its whole-struct form keeps every other field of the file untouched. Keep every CLI flag, the `--help` text, the `--check-permissions` behaviour and the `--test-conversion` samples byte-identical; the flag parsing at `:10-51`, the `printHelp` body and `runSampleConversions` at `:180-205` must not change.
+
+- [ ] **Step 7: Run the tests and the CLI**
 
 Run: `swift test 2>&1 | tail -20`
 Expected: PASS.
@@ -2060,11 +2201,188 @@ Expected: PASS.
 Run: `swift run rukey --test-conversion 2>&1 | tail -8`
 Expected: the same five sample lines the README documents, unchanged.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add Sources/RukeyCore/ Sources/RukeyApp/ Tests/
 git commit -m "Collapse daemon construction into a shared engine and buffer logger output"
+git push
+```
+
+---
+
+### Task 9: `AppEventHub`, the single fan-out point the GUI plan consumes
+
+**Files:**
+- Create: `Sources/RukeyCore/AppEventHub.swift`
+- Create: `Tests/RukeyCoreTests/AppEventHubTests.swift`
+
+**Interfaces:**
+- Consumes: `RukeyEngine` (Task 8), `UndoLearningController.onNotice` (Task 7).
+- Produces:
+
+```swift
+public struct UndoNotice: Equatable, Sendable {
+    public let prefix: String
+    public let converted: String
+    public let count: Int
+    public let threshold: Int
+}
+
+public struct LearnedNotice: Equatable, Sendable {
+    public let prefix: String
+    public let converted: String
+}
+
+public struct LayoutToggleNotice: Equatable, Sendable {
+    public let from: Language
+    public let to: Language
+}
+
+public final class AppEventHub: ObservableObject {
+    public init(tapManager: EventTapManager, learningController: UndoLearningController)
+    @Published public private(set) var lastCorrection: CorrectionDecision?
+    @Published public private(set) var lastUndo: UndoNotice?
+    @Published public private(set) var lastLearned: LearnedNotice?
+    @Published public private(set) var lastLayoutToggle: LayoutToggleNotice?
+    @Published public private(set) var lastIgnoredReason: String?
+}
+```
+
+This is the file the File Structure table already promises as "Single fan-out point translating engine callbacks into `AppEvent` values". The design spec's §5 puts `AppEventHub` in `RukeyCore` — the daemon and the UI are one process — and says it is subscribed to the four `EventTapManager` callbacks and fans them out to SwiftUI. Every property holds the latest value of its kind, so a consumer that attaches late still sees the last correction; construction is the only wiring, so in one process either the hub or hand-written callbacks own the tap, never both. The console (`main.swift`) deliberately does not construct one: it prints through `printLangState` and needs no SwiftUI.
+
+**Construction, in `init`:**
+
+- `tapManager.onCorrection = { [weak self] in self?.lastCorrection = $0 }`
+- `tapManager.onOptionToggle = { [weak self] in self?.lastLayoutToggle = LayoutToggleNotice(from: $0, to: $1) }`
+- `tapManager.onOptionIgnored = { [weak self] in self?.lastIgnoredReason = $0 }`
+- `tapManager.onOptionUndo = { [weak self] _, _ in
+      guard let self else { return }
+      self.learningController.handleUndo(self.tapManager.undoManager.lastUndone) }` — the undo notice itself arrives through the notice hook, count and threshold included, so the raw `(from, restored)` payload is not published separately. This is the same call Task 8's `main.swift` makes; both feed the same controller.
+- `learningController.onNotice = { [weak self] in self?.handle($0) }` with a private `handle(_ notice: LearningNotice)` that maps `.undo` → `UndoNotice` and `.learned` → `LearnedNotice`.
+
+The hub holds strong references to the tap manager and the learning controller; the closures capture the hub weakly. No `@MainActor` and no `@unchecked Sendable`: the tap lives on the main run loop — Task 8's bootstrap inherits today's `CFRunLoopRun`, and the GUI's `NSApplication.run()` delivers to the same tap — so the callbacks arrive on the main thread, and the four callback properties take plain closures, the same shape as `EventTapManager`'s. Say all of this in the file's header comment.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `Tests/RukeyCoreTests/AppEventHubTests.swift`:
+
+```swift
+import XCTest
+@testable import RukeyCore
+
+final class AppEventHubTests: XCTestCase {
+    private func makeTempURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString).json")
+    }
+
+    private func makeRig(
+        threshold: Int = 3,
+        notify: Bool = true
+    ) throws -> (engine: RukeyEngine, controller: UndoLearningController, hub: AppEventHub) {
+        let engine = try RukeyEngine(
+            config: RukeyConfig(),
+            verbose: false,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
+        let controller = UndoLearningController(
+            strikeStore: engine.strikeStore,
+            wordFilter: engine.wordFilter,
+            thresholdProvider: { threshold },
+            notifyProvider: { notify },
+            configWriter: { _ in }
+        )
+        let hub = AppEventHub(tapManager: engine.tapManager, learningController: controller)
+        return (engine, controller, hub)
+    }
+
+    private func decision() -> CorrectionDecision {
+        CorrectionDecision(
+            originalText: "ghb", convertedText: "при",
+            sourceLanguage: .english, targetLanguage: .russian,
+            triggerRule: "en_invalid_prefix_ru_valid")
+    }
+
+    /// Puts a correction into the undo manager and performs the undo — exactly
+    /// the pair of calls the tap makes before it fires `onOptionUndo`.
+    private func undoCandidate(_ engine: RukeyEngine) {
+        engine.undoManager.recordCorrection(decision())
+        _ = engine.undoManager.calculateUndo()
+    }
+
+    func testCorrectionCallbackReachesTheHub() throws {
+        let (engine, _, hub) = try makeRig()
+        engine.tapManager.onCorrection?(decision())
+        XCTAssertEqual(hub.lastCorrection, decision())
+    }
+
+    func testOptionToggleReachesTheHub() throws {
+        let (engine, _, hub) = try makeRig()
+        engine.tapManager.onOptionToggle?(.english, .russian)
+        XCTAssertEqual(hub.lastLayoutToggle, LayoutToggleNotice(from: .english, to: .russian))
+    }
+
+    func testIgnoredReasonReachesTheHub() throws {
+        let (engine, _, hub) = try makeRig()
+        engine.tapManager.onOptionIgnored?("no_pending_press")
+        XCTAssertEqual(hub.lastIgnoredReason, "no_pending_press")
+    }
+
+    func testUndoCallbackFeedsLearningAndPublishesTheNotice() throws {
+        let (engine, _, hub) = try makeRig(threshold: 3)
+        undoCandidate(engine)
+        engine.tapManager.onOptionUndo?(.english, "ghb")
+        // The hub's wiring is what drove the strike: nothing else called handleUndo.
+        XCTAssertEqual(engine.strikeStore.strikes(for: "ghb"), 1)
+        XCTAssertEqual(hub.lastUndo, UndoNotice(
+            prefix: "ghb", converted: "при", count: 1, threshold: 3))
+        XCTAssertNil(hub.lastLearned)
+    }
+
+    func testLearningReachesTheHubAndTheFilter() throws {
+        let (engine, _, hub) = try makeRig(threshold: 1)
+        undoCandidate(engine)
+        engine.tapManager.onOptionUndo?(.english, "ghb")
+        XCTAssertEqual(hub.lastLearned, LearnedNotice(prefix: "ghb", converted: "при"))
+        XCTAssertTrue(engine.wordFilter.isExcluded("ghb"))
+    }
+
+    func testUndoNoticeIsSuppressedWhenNotificationsAreOff() throws {
+        let (engine, _, hub) = try makeRig(threshold: 3, notify: false)
+        undoCandidate(engine)
+        engine.tapManager.onOptionUndo?(.english, "ghb")
+        XCTAssertNil(hub.lastUndo)
+        // Suppression is about the notice, not about counting: the strike still lands.
+        XCTAssertEqual(engine.strikeStore.strikes(for: "ghb"), 1)
+    }
+}
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `swift test --filter AppEventHubTests 2>&1 | tail -20`
+Expected: FAIL — `cannot find 'AppEventHub' in scope`.
+
+- [ ] **Step 3: Implement `AppEventHub`**
+
+Create `Sources/RukeyCore/AppEventHub.swift` per the construction above. `@Published` needs `import Combine`; the three notice structs live in the same file. The private `handle(_ notice: LearningNotice)` is the only writer of `lastUndo`/`lastLearned`; nothing but the wiring closures writes `lastCorrection`, `lastLayoutToggle` and `lastIgnoredReason`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `swift test 2>&1 | tail -20`
+Expected: PASS.
+
+- [ ] **Step 5: Verify the CLI still builds and behaves**
+
+Run: `swift build 2>&1 | tail -5` → `Build complete!`; `swift run rukey --test-conversion 2>&1 | tail -8` → the same five sample lines. Nothing in `Sources/RukeyApp/` changes in this task.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Sources/RukeyCore/AppEventHub.swift Tests/
+git commit -m "Add AppEventHub, the single fan-out point for GUI events"
 git push
 ```
 
