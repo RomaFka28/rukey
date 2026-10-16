@@ -81,16 +81,22 @@ public final class Detector: @unchecked Sendable {
             let isCurrentValid = fullWord
                 ? ruTrie.contains(word) || customDictionary.contains(word)
                 : ruTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
+            // One lookup, not two: `isPrefixOfKnown(converted)` answers the
+            // on-the-fly arm of `isConvertedValid` *and* the junk-gate waiver, so
+            // hoisting it saves a lock acquisition and a trie walk per keystroke.
+            // The `fullWord ? false` arm keeps the boundary path from gaining a
+            // lookup it never had.
+            let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
             let isConvertedValid = fullWord
                 ? enTrie.contains(converted) || customDictionary.contains(converted)
-                : enTrie.hasPrefix(converted) || customDictionary.isPrefixOfKnown(converted)
+                : enTrie.hasPrefix(converted) || taughtTarget
             if !isCurrentValid && isConvertedValid {
                 // On-the-fly only: demand a well-backed target prefix, otherwise a
                 // typo + one junk dictionary entry flips the layout (see `ghul`).
                 // The bar is waived for a taught word: the user taught it, so it is
                 // by definition real — which is what the bar exists to establish.
                 if !fullWord,
-                    !customDictionary.isPrefixOfKnown(converted),
+                    !taughtTarget,
                     enTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
                 {
                     return nil
@@ -108,12 +114,15 @@ public final class Detector: @unchecked Sendable {
             let isCurrentValid = fullWord
                 ? enTrie.contains(word) || customDictionary.contains(word)
                 : enTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
+            // Same hoist as the Russian branch: one lookup for both the
+            // `isConvertedValid` arm and the junk-gate waiver.
+            let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
             let isConvertedValid = fullWord
                 ? ruTrie.contains(converted) || customDictionary.contains(converted)
-                : ruTrie.hasPrefix(converted) || customDictionary.isPrefixOfKnown(converted)
+                : ruTrie.hasPrefix(converted) || taughtTarget
             if !isCurrentValid && isConvertedValid {
                 if !fullWord,
-                    !customDictionary.isPrefixOfKnown(converted),
+                    !taughtTarget,
                     ruTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
                 {
                     return nil
@@ -191,8 +200,18 @@ public final class Detector: @unchecked Sendable {
         func convert(_ text: String, _ lang: Language) -> String {
             lang == .russian ? LayoutConverter.toEnglish(text) : LayoutConverter.toRussian(text)
         }
+        // Exact membership, both arms, widened with the taught words. This is the
+        // punctuated path's third decision site and it must agree with the run
+        // path's boundary arm about the same typing — so it takes `contains`, not
+        // `isPrefixOfKnown`: prefix protection belongs on the on-the-fly arm only,
+        // where the word is still being typed. Adding it here instead would make
+        // this path *stricter* than the boundary path (with `ghbdtnabc` taught,
+        // `ghbdtn` converts but `ghbdtn!` would not), which is the cross-path
+        // disagreement review focus #5 forbids.
         func contains(_ text: String, _ lang: Language) -> Bool {
-            lang == .russian ? ruTrie.contains(text) : enTrie.contains(text)
+            lang == .russian
+                ? ruTrie.contains(text) || customDictionary.contains(text)
+                : enTrie.contains(text) || customDictionary.contains(text)
         }
 
         // H1 must fail for H2 to be considered; valid words never reach here
