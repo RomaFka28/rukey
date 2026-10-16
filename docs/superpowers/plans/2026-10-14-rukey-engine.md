@@ -1384,6 +1384,20 @@ final class StrikeStoreTests: XCTestCase {
         store.removeAll()
         XCTAssertEqual(store.strikes(for: "ghb"), 0)
     }
+
+    func testRemoveAllKeysForPrefixClearsOnlyThatBranchAndPersists() {
+        let (store, url) = makeStore()
+        store.registerUndo(key: "ghbdtn")
+        store.registerUndo(key: "ntcn")
+        store.removeAllKeys(for: "ghb")
+        XCTAssertEqual(store.strikes(for: "ghbdtn"), 0)
+        XCTAssertEqual(store.strikes(for: "ntcn"), 1)
+        // Clearing has to reach the file: a restart must not resurrect what the
+        // user removed, or the word can never be learned again.
+        let reopened = StrikeStore(fileURL: url)
+        XCTAssertEqual(reopened.strikes(for: "ghbdtn"), 0)
+        XCTAssertEqual(reopened.strikes(for: "ntcn"), 1)
+    }
 }
 ```
 
@@ -1546,11 +1560,11 @@ Expected: FAIL — `cannot find 'StrikeStore' in scope`.
 
 - [ ] **Step 4: Implement `StrikeStore`**
 
-Create `Sources/RukeyCore/StrikeStore.swift`. On-disk shape is `{"strikes": {"ghb": 2}}`. Initialiser signature is `init(fileURL: URL, logBuffer: LogBuffer = .shared)`. Load under the lock in `init`; a missing file is silent, a corrupt file logs a `.warn` and starts empty. `registerUndo` increments, writes atomically (`Data.write(to:options:.atomic)`), and returns the new count. Guard all state with `NSLock.withLock`.
+Create `Sources/RukeyCore/StrikeStore.swift`. On-disk shape is `{"strikes": {"ghb": 2}}`. Initialiser signature is `init(fileURL: URL, logBuffer: LogBuffer = .shared)`. Load under the lock in `init`; a missing file is silent, a corrupt file logs a `.warn` and starts empty. `registerUndo` increments, writes atomically (`Data.write(to:options:.atomic)`), and returns the new count. Guard all state with `NSLock.withLock`. `removeAll` and `removeAllKeys(for:)` mutate the same table and must persist it the same way — a restart must not resurrect what the user cleared. `StrikeStore` is `@unchecked Sendable`, and the plan's Global Constraints require a comment justifying the attribute: here the justification is real, because every mutation of the table happens inside `lock.withLock`.
 
 - [ ] **Step 5: Implement `UndoLearningController`**
 
-Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond its dependencies. `handleUndo` does, in order:
+Create `Sources/RukeyCore/UndoLearningController.swift`. It owns no state beyond its dependencies. Like every new `@unchecked Sendable` type it carries a comment justifying the attribute; the honest statement here is that every stored property is immutable and itself `Sendable`, so `@unchecked` is conservative rather than load-bearing. `handleUndo` does, in order:
 
 1. `guard let pair else { return }`.
 2. `let count = strikeStore.registerUndo(key: pair.original)`.
