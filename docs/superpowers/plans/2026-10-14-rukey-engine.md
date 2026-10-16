@@ -1204,6 +1204,7 @@ git push
 - Modify: `Sources/RukeyCore/EventTapManager.swift:74-108` (tap mask), `:281-284` (flagsChanged branch), `:122-124` (pass helper)
 - Create: `Sources/RukeyCore/TapPolicy.swift`
 - Create: `Tests/RukeyCoreTests/EventTapPolicyTests.swift`
+- Create: `Tests/RukeyCoreTests/SecureInputMonitorTests.swift`
 - Modify: `Sources/RukeyCore/SecureInputMonitor.swift`
 
 **Interfaces:**
@@ -1267,6 +1268,66 @@ final class EventTapPolicyTests: XCTestCase {
 }
 ```
 
+Then create `Tests/RukeyCoreTests/SecureInputMonitorTests.swift`. `shouldBypass(bundleID:secureInput:)` is the pure decision function every keystroke goes through, and it has never had a test; the setters Step 5 adds are only worth anything if the read path honours them. Inject both closures explicitly so these tests never reach NSWorkspace, the real Secure Input state, or the TTL cache:
+
+```swift
+import XCTest
+@testable import RukeyCore
+
+final class SecureInputMonitorTests: XCTestCase {
+    private func makeMonitor(
+        excludeTerminals: Bool = false,
+        customExcludedBundleIDs: Set<String> = []
+    ) -> SecureInputMonitor {
+        SecureInputMonitor(
+            excludeTerminals: excludeTerminals,
+            customExcludedBundleIDs: customExcludedBundleIDs,
+            secureInputCheck: { false },
+            frontmostBundleID: { nil }
+        )
+    }
+
+    func testSecureInputAlwaysBypasses() {
+        XCTAssertTrue(makeMonitor().shouldBypass(bundleID: nil, secureInput: true))
+    }
+
+    func testSecuritySensitiveBundlesAreAlwaysExcluded() {
+        let monitor = makeMonitor()
+        for bundleID in SecureInputMonitor.securitySensitiveBundleIDs {
+            XCTAssertTrue(
+                monitor.shouldBypass(bundleID: bundleID, secureInput: false),
+                "\(bundleID) must be excluded whatever the settings say")
+        }
+    }
+
+    func testExcludeTerminalsSettingIsHonouredWhenChanged() {
+        let monitor = makeMonitor()
+        XCTAssertFalse(monitor.shouldBypass(bundleID: "com.apple.Terminal", secureInput: false))
+        monitor.excludeTerminals = true
+        XCTAssertTrue(monitor.excludeTerminals)
+        XCTAssertTrue(monitor.shouldBypass(bundleID: "com.apple.Terminal", secureInput: false))
+        monitor.excludeTerminals = false
+        XCTAssertFalse(monitor.shouldBypass(bundleID: "com.apple.Terminal", secureInput: false))
+    }
+
+    func testCustomExcludedBundleIDsSettingIsHonouredWhenChanged() {
+        let monitor = makeMonitor()
+        XCTAssertFalse(monitor.shouldBypass(bundleID: "com.example.app", secureInput: false))
+        monitor.customExcludedBundleIDs = ["com.example.app"]
+        XCTAssertEqual(monitor.customExcludedBundleIDs, ["com.example.app"])
+        XCTAssertTrue(monitor.shouldBypass(bundleID: "com.example.app", secureInput: false))
+        monitor.customExcludedBundleIDs = []
+        XCTAssertFalse(monitor.shouldBypass(bundleID: "com.example.app", secureInput: false))
+    }
+
+    func testUnrelatedBundleIsNotExcluded() {
+        XCTAssertFalse(
+            makeMonitor(excludeTerminals: true).shouldBypass(
+                bundleID: "com.apple.Safari", secureInput: false))
+    }
+}
+```
+
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `swift test --filter EventTapPolicyTests 2>&1 | tail -20`
@@ -1300,6 +1361,7 @@ In `Sources/RukeyCore/SecureInputMonitor.swift`, make the app-exclusion settings
 - Reads inside `shouldBypass` (`:86,90`) must go through the same lock. Note `shouldBypassForActiveApplication()` runs on the per-keystroke path (`EventTapManager.swift:268`); one uncontended `NSLock` acquisition is negligible there next to the `IsSecureEventInputEnabled()` syscall that path already makes.
 - Keep the initialiser signature unchanged so `EventTapManager.init` and every existing call site keep compiling.
 - `isSecureInputActive()` and `shouldBypassForActiveApplication()` must stay distinct: Secure Input and app exclusions are different questions, and the layout toggle in Step 4 consults only the former.
+- The class's pre-existing `@unchecked Sendable` gains the justification comment the plan's Global Constraints require. It has never been more necessary: this task adds mutable state to a class read on the keystroke path. The honest statement is that the frontmost-app cache is guarded by `cacheLock`, the two settings by their own `NSLock`, and `secureInputCheck`/`frontmostBundleID` are immutable `@Sendable` closures.
 
 - [ ] **Step 6: Run the tests to see them pass**
 
@@ -1314,7 +1376,7 @@ Expected: `Build complete!`
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Sources/RukeyCore/
+git add Sources/RukeyCore/ Tests/
 git commit -m "Reset undo on click and refuse Option layout toggle under Secure Input"
 git push
 ```
