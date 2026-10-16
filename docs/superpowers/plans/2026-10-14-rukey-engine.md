@@ -720,6 +720,17 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
         XCTAssertNil(detector.evaluateFullWord(buffer: ",ghbdtn", currentLanguage: .english))
     }
 
+    func testExcludedPrefixIsBlockedOnThePunctuatedPathToo() {
+        // "ntcnbhjdfnm" is the Latin typing of "тестировать" and "ntcn" is a prefix
+        // of it — the Latin typing of "тест", which IS in the dictionary. Excluding
+        // the longer word must not let its prefix convert on the punctuated path,
+        // where the check has to be a prefix test, not an exact one.
+        let (detector, _) = makeFilteredDetector(excluding: ["ntcnbhjdfnm"])
+        XCTAssertNil(detector.evaluate(buffer: "ntcn", currentLanguage: .english))
+        XCTAssertNil(detector.evaluateFullWord(buffer: "ntcn,", currentLanguage: .english))
+        XCTAssertNil(detector.evaluateFullWord(buffer: ",ntcn", currentLanguage: .english))
+    }
+
     func testEmptyFilterLeavesEveryBehaviourUnchanged() {
         let (detector, _) = makeFilteredDetector(excluding: [])
         XCTAssertEqual(
@@ -735,7 +746,7 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
     }
 ```
 
-`testExclusionIsPerInputNotPerResult` and `testPunctuatedExcludedWordIsBlockedLikeTheBareWord` pin Review Focus items 5 and the input-side semantics from spec §6.1.
+`testExclusionIsPerInputNotPerResult`, `testPunctuatedExcludedWordIsBlockedLikeTheBareWord` and `testExcludedPrefixIsBlockedOnThePunctuatedPathToo` pin Review Focus items 5 and the input-side semantics from spec §6.1.
 
 - [ ] **Step 3: Run the tests to see them fail**
 
@@ -752,7 +763,7 @@ In `Sources/RukeyCore/Detector.swift`:
 
 - Add a stored property `public let wordFilter: WordFilter` and a parameter `wordFilter: WordFilter = WordFilter()` on `init`, placed after `minTargetCompletions`.
 - In `decisionIfMistyped(word:bufferLang:fullWord:)` (`Detector.swift:51`), return `nil` when `wordFilter.isPrefixOfExcluded(word)`. This covers both the on-the-fly and the boundary run paths in one place, and it is checked before any trie work so the filter costs nothing extra on a hit.
-- In `decisionForPunctuatedToken(in:)` (`Detector.swift:131`), return `nil` when `wordFilter.isExcluded(core)` — the extracted core, not the raw token, so edge punctuation does not defeat the filter.
+- In `decisionForPunctuatedToken(in:)` (`Detector.swift:131`), return `nil` when `wordFilter.isPrefixOfExcluded(core)` — the extracted core, not the raw token, so edge punctuation does not defeat the filter, and a **prefix** test rather than an exact one, so this path agrees with `decisionIfMistyped` on the same typing. `hasPrefix` is a superset of `contains`, so the tightening cannot block anything that converts today without a filter installed.
 
 Do not add the check to `candidateWord(from:minLength:)`; `evaluate` and `evaluateFullWord` both pass the same `word` to `decisionIfMistyped` and must behave identically.
 
