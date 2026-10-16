@@ -1610,6 +1610,7 @@ git push
 - Modify: `Sources/RukeyCore/KeyCodes.swift:19-35`
 - Modify: `Sources/RukeyApp/main.swift:42-148`
 - Create: `Tests/RukeyCoreTests/DaemonBootstrapTests.swift`
+- Create: `Tests/RukeyCoreTests/RukeyLoggerTests.swift`
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–7.
@@ -1655,8 +1656,21 @@ final class DaemonBootstrapTests: XCTestCase {
         )
     }
 
+    /// Both stores default to files under the real `~/.config/rukey`, so every
+    /// engine in this suite is built on per-test temporary paths: no test may
+    /// read or write the developer's own configuration.
+    private func makeTempURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString).json")
+    }
+
     func testEngineBuildsEveryStoreFromOneConfig() throws {
-        let engine = try RukeyEngine(config: makeConfig(), verbose: false)
+        let engine = try RukeyEngine(
+            config: makeConfig(),
+            verbose: false,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
         XCTAssertTrue(engine.wordFilter.isEmpty)
         XCTAssertEqual(engine.undoManager.canUndo, false)
         XCTAssertEqual(engine.strikeStore.strikes(for: "anything"), 0)
@@ -1665,24 +1679,66 @@ final class DaemonBootstrapTests: XCTestCase {
     func testExcludedWordsFromConfigReachTheFilter() throws {
         var config = makeConfig()
         config.excludedWords = ["ghbdtn"]
-        let engine = try RukeyEngine(config: config, verbose: false)
+        let engine = try RukeyEngine(
+            config: config,
+            verbose: false,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
         XCTAssertTrue(engine.wordFilter.isExcluded("ghbdtn"))
     }
 
     func testCustomWordsReachTheDetector() throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("custom-\(UUID().uuidString).json")
+        let url = makeTempURL("custom")
         CustomDictionary(fileURL: url).replaceAll(with: ["заозкздзаоз"])
         let engine = try RukeyEngine(
-            config: makeConfig(), verbose: false, customDictionaryFileURL: url)
+            config: makeConfig(),
+            verbose: false,
+            customDictionaryFileURL: url,
+            strikeStoreFileURL: makeTempURL("learned")
+        )
         XCTAssertTrue(engine.customDictionary.contains("заозкздзаоз"))
     }
 
     func testBundleIDExclusionsReachTheSecureMonitor() throws {
         var config = makeConfig()
         config.excludedBundleIDs = ["com.example.app"]
-        let engine = try RukeyEngine(config: config, verbose: false)
+        let engine = try RukeyEngine(
+            config: config,
+            verbose: false,
+            customDictionaryFileURL: makeTempURL("custom"),
+            strikeStoreFileURL: makeTempURL("learned")
+        )
         XCTAssertEqual(engine.secureMonitor.customExcludedBundleIDs, ["com.example.app"])
+    }
+}
+```
+
+Then create `Tests/RukeyCoreTests/RukeyLoggerTests.swift` — the logger is the other half of this task, and its levels are the contract the GUI's log pane reads:
+
+```swift
+import XCTest
+@testable import RukeyCore
+
+final class RukeyLoggerTests: XCTestCase {
+    func testLogLevelsReachTheBuffer() {
+        let buffer = LogBuffer()
+        let logger = RukeyLogger(
+            isVerbose: false, mirrorToStandardOutput: false, logBuffer: buffer)
+        logger.debug("quiet")
+        logger.info("plain")
+        logger.warn("careful")
+        logger.error("broken")
+        XCTAssertEqual(buffer.lines().map(\.level), [.info, .warn, .error])
+    }
+
+    func testVerboseGatesDebugAndKeepsItsText() {
+        let buffer = LogBuffer()
+        let logger = RukeyLogger(
+            isVerbose: true, mirrorToStandardOutput: false, logBuffer: buffer)
+        logger.debug("loud")
+        XCTAssertEqual(buffer.lines().last?.level, .debug)
+        XCTAssertEqual(buffer.lines().last?.text, "loud")
     }
 }
 ```
@@ -1696,13 +1752,17 @@ Expected: FAIL — `cannot find 'RukeyEngine' in scope`.
 
 Create `Sources/RukeyCore/DaemonBootstrap.swift`. `init` performs, in order: load config → build `WordFilter` from `config.excludedWords` → build `CustomDictionary(fileURL: customDictionaryFileURL)` (it reads `custom.json` itself in `init`; there is deliberately **no** `customWords` key in `exclude.json`) → build `StrikeStore` at `strikeStoreFileURL` → build the dictionaries via `DictionaryLoader.shared` and throw when either trie has `wordCount == 0` → build `Detector` with all injected dependencies → build `SecureInputMonitor` → build `EventTapManager`. It must not start the tap; `EventTapManager.start()` stays a separate call the entry point makes.
 
+An empty dictionary must not be a silent success. Throw `RukeyEngineError.emptyDictionary(resource:)`, defined in the same file, with `resource` equal to `"words_en.txt"` or `"words_ru.txt"`, checking English first so the entry point can print the same messages in the same order it does today.
+
+`Detector` receives `minPrefixLength: config.minPrefixLength` — not a literal `3`, or the settings would not take effect — and `minTargetCompletions` keeps its default. `init` also sets `tapManager.logger = RukeyLogger(isVerbose: verbose)`; that is what the `verbose` parameter is for. `SecureInputMonitor` gets `config.excludeTerminals` and `config.excludedBundleIDs`.
+
 - [ ] **Step 4: Buffer logger output**
 
-In `Sources/RukeyCore/KeyCodes.swift`, extend `RukeyLogger` to `warn(_:)` and `error(_:)` alongside the existing `debug` and `info`. All four append to `LogBuffer.shared` with the matching level; `debug` appends only when `isVerbose`; `info`, `warn` and `error` also keep writing to standard output when `mirrorToStandardOutput` is true, which must stay the default so `swift run rukey` keeps behaving as it does today. Add `public var mirrorToStandardOutput: Bool` to the initialiser.
+In `Sources/RukeyCore/KeyCodes.swift`, extend `RukeyLogger` to `warn(_:)` and `error(_:)` alongside the existing `debug` and `info`. All four append to the log buffer with the matching level; `debug` appends only when `isVerbose`; `info`, `warn` and `error` also keep writing to standard output when `mirrorToStandardOutput` is true, which must stay the default so `swift run rukey` keeps behaving as it does today. The initialiser becomes `public init(isVerbose: Bool = false, mirrorToStandardOutput: Bool = true, logBuffer: LogBuffer = .shared)` — `mirrorToStandardOutput` is a settable `public var`, and the buffer is injectable so `RukeyLoggerTests` can watch it without writing into the daemon's own buffer. Existing call sites that pass only `isVerbose:` must keep compiling unchanged.
 
 - [ ] **Step 5: Collapse `main.swift` onto the bootstrap**
 
-In `Sources/RukeyApp/main.swift`, replace the manual construction between `:70` and `:118` with a single `RukeyEngine` construction. Inside `onOptionUndo`, keep the existing print and add one line calling `learningController.handleUndo(tapManager.undoManager.lastUndone)`, constructing `learningController` from the engine's `strikeStore` and `wordFilter` plus closures reading the live config. Keep every CLI flag, the `--help` text and the `--check-permissions` behaviour byte-identical; the flag parsing at `:10-51` and the `printHelp` body must not change.
+In `Sources/RukeyApp/main.swift`, replace lines `:70`–`:118` — the dictionary loading, the detector/monitor/tap construction, and the four `tapManager.on…` callback assignments — with one `RukeyEngine` construction followed by the same four callbacks re-created (they close over `tapManager` and `printLangState`, so they cannot move inside the engine). `RukeyEngine.init` throws: wrap the construction in `do`/`catch` and, in `catch`, print the same two dictionary-failure lines the code prints today — `❌ English dictionary is missing or empty (words_en: got 0 words). Check Resources/words_en.txt.` when `resource == "words_en.txt"` and the Russian equivalent otherwise — then `exit(1)`, exactly as the current `:79-87` block does. Inside `onOptionUndo`, keep the existing print and add one line calling `learningController.handleUndo(tapManager.undoManager.lastUndone)`, constructing `learningController` from the engine's `strikeStore` and `wordFilter` plus closures reading the live config. Keep every CLI flag, the `--help` text, the `--check-permissions` behaviour and the `--test-conversion` samples byte-identical; the flag parsing at `:10-51`, the `printHelp` body and `runSampleConversions` at `:180-205` must not change.
 
 - [ ] **Step 6: Run the tests and the CLI**
 
@@ -1715,7 +1775,7 @@ Expected: the same five sample lines the README documents, unchanged.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add Sources/RukeyCore/ Sources/RukeyApp/
+git add Sources/RukeyCore/ Sources/RukeyApp/ Tests/
 git commit -m "Collapse daemon construction into a shared engine and buffer logger output"
 git push
 ```
