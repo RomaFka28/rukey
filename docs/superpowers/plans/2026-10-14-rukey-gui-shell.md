@@ -825,6 +825,9 @@ git push
 **Files:**
 - Create: `Sources/RukeyGUI/NotificationService.swift`
 - Create: `Sources/RukeyGUI/CorrectionFlash.swift`
+- Modify: `Sources/RukeyGUI/AppDelegate.swift` (Step 5's hub wiring and the `Журнал…` opener)
+- Modify: `Sources/RukeyGUI/SettingsWindowController.swift` (the `Журнал…` opener's tab selection)
+- Modify: `Sources/RukeyGUI/SettingsView.swift` (`TabView` binds to the held selection)
 
 **Interfaces:**
 - Consumes: `AppEventHub` (`lastCorrection`, `lastUndo`, `lastLearned`) and the live `SettingsState` (`showCorrectionFlash`).
@@ -892,6 +895,7 @@ Drive everything from `AppEventHub`'s published values instead of sniffing `LogB
 - `hub.lastUndo` — fire the undo notice, carrying `prefix`/`converted`/`count`/`threshold`.
 
 The undo notice is already gated upstream: `UndoLearningController` emits `.undo` only when the live `notifyProvider()` (Task 2's `state.notifyOnEveryUndo`) is true, exactly like the console's own `Отменено:` line. Do not gate `hub.lastUndo` a second time — or, if you do, say plainly in the service's header that it is a second gate; a hidden second gate is how the menu and the notifications drift apart.
+- Wire `Журнал…`: `StatusItemController` already accepts `onOpenLog` (nil since Task 3, which keeps the row disabled). Pass an opener that shows the settings window with the `Журнал` tab selected. The selection lives on the window's held model and `SettingsView`'s `TabView` binds to it (the same held-model pattern as the other tabs); the existing `show()` keeps opening the default tab.
 
 - [ ] **Step 6: Verify**
 
@@ -900,7 +904,7 @@ Expected: `Build complete!`, green suite, five unchanged sample lines.
 
 - [ ] **Step 7: Manual check**
 
-Trigger one autocorrection, three undo notices, and a learned word. Expect: a corner panel per correction that disappears on its own, notification banners matching the menu text exactly, and the learned notice appearing once. Report in the commit message.
+Trigger one autocorrection, three undo notices, and a learned word. Expect: a corner panel per correction that disappears on its own, notification banners matching the menu text exactly, and the learned notice appearing once. **Owner-performed:** an agent executing this plan records it as *unverified*; the commit message carries no manual-check claims.
 
 - [ ] **Step 8: Commit**
 
