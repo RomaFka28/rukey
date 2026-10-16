@@ -2423,6 +2423,21 @@ final class AppEventHubTests: XCTestCase {
         // Suppression is about the notice, not about counting: the strike still lands.
         XCTAssertEqual(engine.strikeStore.strikes(for: "ghb"), 1)
     }
+
+    /// The `.undo` notice's integers must come from the payload, not match the
+    /// fixtures by coincidence: a first and second undo under a non-default
+    /// threshold observe (1, 5) and (2, 5).
+    func testUndoNoticeCarriesTheConfiguredThreshold() throws {
+        let (engine, _, hub) = try makeRig(threshold: 5)
+        undoCandidate(engine)
+        engine.tapManager.onOptionUndo?(.english, "ghb")
+        XCTAssertEqual(hub.lastUndo, UndoNotice(
+            prefix: "ghb", converted: "при", count: 1, threshold: 5))
+        undoCandidate(engine)
+        engine.tapManager.onOptionUndo?(.english, "ghb")
+        XCTAssertEqual(hub.lastUndo, UndoNotice(
+            prefix: "ghb", converted: "при", count: 2, threshold: 5))
+    }
 }
 ```
 
