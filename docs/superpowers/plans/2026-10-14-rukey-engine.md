@@ -1210,6 +1210,13 @@ final class UndoManagerTests: XCTestCase {
         let calculation = manager.calculateUndo()
         XCTAssertEqual(calculation?.backspacesNeeded, 6)
         XCTAssertEqual(calculation?.textToRestore, "ghb")
+        // The undo must switch back the layout the text actually came from.
+        XCTAssertEqual(calculation?.originalLanguage, .english)
+        // A tail can also arrive at record time — the space-triggered correction
+        // passes the space through — and it counts toward the erase too.
+        let recorded = RukeyUndoManager()
+        recorded.recordCorrection(decision(), appendedTail: " ")
+        XCTAssertEqual(recorded.calculateUndo()?.backspacesNeeded, 4)
     }
 
     func testTailAccumulatesAcrossSeveralAppends() {
@@ -1244,6 +1251,12 @@ final class UndoManagerTests: XCTestCase {
         kept.appendToTail(String(repeating: "я", count: 61))
         XCTAssertTrue(kept.canUndo)
         XCTAssertEqual(kept.calculateUndo()?.backspacesNeeded, 64)
+        // The valve weighs the converted text too: 62 + 3 = 65 exceeds it even
+        // though the tail alone does not, so a tail-only bound would keep this.
+        let over = RukeyUndoManager()
+        over.recordCorrection(decision())
+        over.appendToTail(String(repeating: "я", count: 62))
+        XCTAssertFalse(over.canUndo)
     }
 
     func testTailOnAnEmptyUndoIsIgnored() {
@@ -1257,6 +1270,13 @@ final class UndoManagerTests: XCTestCase {
         manager.recordCorrection(decision(original: "ghb", converted: "при"))
         manager.recordCorrection(decision(original: "тест", converted: "ручка"))
         XCTAssertEqual(manager.calculateUndo()?.textToRestore, "тест")
+        // Replacement starts a fresh tail: a tail from the old correction must
+        // not widen the new correction's erase.
+        let fresh = RukeyUndoManager()
+        fresh.recordCorrection(decision())
+        fresh.appendToTail("вет")
+        fresh.recordCorrection(decision(original: "ntcn", converted: "тест"))
+        XCTAssertEqual(fresh.calculateUndo()?.backspacesNeeded, 4)
     }
 
     func testUndoIsConsumedOnce() {
@@ -1276,6 +1296,12 @@ final class UndoManagerTests: XCTestCase {
         _ = manager.calculateUndo()
         XCTAssertEqual(manager.lastUndone?.original, "ghb")
         XCTAssertEqual(manager.lastUndone?.converted, "при")
+        // "The most recently undone pair": neither a later correction nor a
+        // clear retracts it — Task 7's learning reads it through this API.
+        manager.recordCorrection(decision(original: "руддщ", converted: "hello"))
+        XCTAssertEqual(manager.lastUndone?.original, "ghb")
+        manager.clear()
+        XCTAssertEqual(manager.lastUndone?.original, "ghb")
     }
 
     func testBackspacesUseUTF16Length() {
