@@ -867,6 +867,23 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift`:
             buffer: "заозкздзаоз", currentLanguage: .russian))
     }
 
+    func testTaughtWordIsNotConvertedBackEvenWhenItsLatinFormIsReal() {
+        // The discriminating fixture for the *current*-side widening: "руддщ"
+        // spells "hello", a real English dictionary word, so without
+        // `isCurrentValid` widening the classic flip fires and returns hello.
+        // With it, the taught word wins. The заозкздзаоз pair cannot show this —
+        // there the converted side is not a word at all, so the branch is
+        // unreachable either way and the mutation survives.
+        let (detector, _) = makeTaughtDetector(words: ["руддщ"])
+        XCTAssertNil(detector.evaluateFullWord(buffer: "руддщ", currentLanguage: .russian))
+        // Positive control: without the taught word the very same pair converts,
+        // so the nil above cannot be a dead path.
+        let (control, _) = makeTaughtDetector(words: [])
+        XCTAssertEqual(
+            control.evaluateFullWord(buffer: "руддщ", currentLanguage: .russian)?.convertedText,
+            "hello")
+    }
+
     func testTaughtWordDoesNotLicenseReverseConversion() {
         // Teaching a word teaches what may be typed, not what it may become:
         // the taught Russian word is never itself flipped into Latin.
@@ -1206,6 +1223,8 @@ git push
 - Create: `Tests/RukeyCoreTests/EventTapPolicyTests.swift`
 - Create: `Tests/RukeyCoreTests/SecureInputMonitorTests.swift`
 - Modify: `Sources/RukeyCore/SecureInputMonitor.swift`
+- Modify: `Sources/RukeyCore/Detector.swift:28-56` (the lock-guarded `minPrefixLength`)
+- Modify: `Tests/RukeyCoreTests/DetectorTests.swift`
 
 **Interfaces:**
 - Consumes: `RukeyUndoManager`, `SecureInputMonitor`.
@@ -1328,6 +1347,22 @@ final class SecureInputMonitorTests: XCTestCase {
 }
 ```
 
+Finally append to `Tests/RukeyCoreTests/DetectorTests.swift`. `Detector.minPrefixLength` is the third setter spec §5 names — plan 2's Task 6 consumes the `Detector.minPrefixLength` setter and asserts the change reaches the live detector — and no other task in either plan provides it, which is why it is here:
+
+```swift
+    func testMinPrefixLengthIsSettableAndTakesEffectImmediately() {
+        // Spec §5: the settings window changes this without rebuilding the
+        // detector, because a rebuild means re-arming the tap and dropping input
+        // while it is down. "gh" -> "пр" is a real prefix of привет/приветствие,
+        // so at a bar of 2 the only thing keeping it from flipping is its length.
+        let detector = makeDetector(minTargetCompletions: 2, minPrefixLength: 3)
+        XCTAssertNil(detector.evaluate(buffer: "gh", currentLanguage: .english))
+        detector.minPrefixLength = 2
+        XCTAssertEqual(
+            detector.evaluate(buffer: "gh", currentLanguage: .english)?.convertedText, "пр")
+    }
+```
+
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `swift test --filter EventTapPolicyTests 2>&1 | tail -20`
@@ -1351,7 +1386,7 @@ In `Sources/RukeyCore/EventTapManager.swift`:
 
 `SecureInputMonitor.isSecureInputActive()` already exists (`SecureInputMonitor.swift:56`) and answers exactly this question; no new accessor is needed. It must stay distinct from `shouldBypassForActiveApplication()`, which also consults the app exclusion list — Secure Input and app exclusions are different questions.
 
-- [ ] **Step 5: Make the app-exclusion settings mutable**
+- [ ] **Step 5: Make the hot-reload settings mutable**
 
 In `Sources/RukeyCore/SecureInputMonitor.swift`, make the app-exclusion settings mutable so the settings window can change them without rebuilding the tap.
 
@@ -1362,6 +1397,12 @@ In `Sources/RukeyCore/SecureInputMonitor.swift`, make the app-exclusion settings
 - Keep the initialiser signature unchanged so `EventTapManager.init` and every existing call site keep compiling.
 - `isSecureInputActive()` and `shouldBypassForActiveApplication()` must stay distinct: Secure Input and app exclusions are different questions, and the layout toggle in Step 4 consults only the former.
 - The class's pre-existing `@unchecked Sendable` gains the justification comment the plan's Global Constraints require. It has never been more necessary: this task adds mutable state to a class read on the keystroke path. The honest statement is that the frontmost-app cache is guarded by `cacheLock`, the two settings by their own `NSLock`, and `secureInputCheck`/`frontmostBundleID` are immutable `@Sendable` closures.
+
+Spec §5 names **three** settings that are `let` today and must gain hot-reload setters: `SecureInputMonitor.excludeTerminals`, `.customExcludedBundleIDs`, and `Detector.minPrefixLength`. The first two are above; the third belongs here, in `Sources/RukeyCore/Detector.swift`:
+
+- Convert `minPrefixLength` from `public let` (`:28`) into `public var minPrefixLength: Int { get set }` — a computed property over a private stored property, guarded by a private `NSLock`. Every existing read (`candidateWord(from:minLength:)` at `:145` and `:155`) then goes through the lock automatically: one uncontended acquisition per decision, the same cost the exclusion filter already pays.
+- Keep `init`'s `minPrefixLength` parameter, so `RukeyEngine` (Task 8) and every existing call site keep compiling. Do not clamp here: `RukeyConfig` already validates 2...5 and the settings window clamps; the detector takes what it is given.
+- Do not rebuild the detector and do not re-arm the tap. Spec §5 forbids it — that window is one in which input is not intercepted — and it is the whole reason this setter exists.
 
 - [ ] **Step 6: Run the tests to see them pass**
 
@@ -1376,8 +1417,15 @@ Expected: `Build complete!`
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Sources/RukeyCore/ Tests/
+# Each commit must build on its own, so tests are staged with the code they
+# exercise: the SecureInputMonitor and Detector setter tests do not compile
+# until Step 5 exists.
+git add Sources/RukeyCore/TapPolicy.swift Sources/RukeyCore/EventTapManager.swift Tests/RukeyCoreTests/EventTapPolicyTests.swift
 git commit -m "Reset undo on click and refuse Option layout toggle under Secure Input"
+
+git add Sources/RukeyCore/SecureInputMonitor.swift Sources/RukeyCore/Detector.swift Tests/RukeyCoreTests/SecureInputMonitorTests.swift Tests/RukeyCoreTests/DetectorTests.swift
+git commit -m "Add the hot-reload setters for the settings the spec lists as let"
+
 git push
 ```
 
