@@ -172,7 +172,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Rebuilds the menu's snapshot from the live state and hands it over.
+    ///
+    /// The learned-word banner is validated here on every refresh: a word
+    /// removed from the settings window's list is the one removal path that
+    /// cannot clear the banner itself, and without this check an open menu
+    /// would keep rendering «Запомнено: … больше не станет …» for a word that
+    /// is no longer excluded. A false drop cannot occur — the banner is only
+    /// ever set for a word that is in the filter at that moment, and the
+    /// menu's own `Убрать` path clears it itself.
     private func refreshStatusModel() {
+        if let banner = learnedWordBanner, let engine,
+            !engine.wordFilter.isExcluded(banner.prefix)
+        {
+            learnedWordBanner = nil
+        }
         let model = StatusMenuModel(
             permission: gate.state,
             running: tapRunning,
@@ -234,15 +247,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.show()
     }
 
-    /// Closing the settings window can invalidate the learned-word banner: the
-    /// word may have just been removed there. The banner is dropped when its
-    /// word is no longer excluded, and the menu is refreshed either way.
+    /// Closing the settings window triggers a status refresh; the refresh
+    /// itself drops the banner if its word was removed there.
     private func settingsWindowDidClose() {
-        if let banner = learnedWordBanner, let engine,
-            !engine.wordFilter.isExcluded(banner.prefix)
-        {
-            learnedWordBanner = nil
-        }
         refreshStatusModel()
     }
 }
