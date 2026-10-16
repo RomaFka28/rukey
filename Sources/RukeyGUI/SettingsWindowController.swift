@@ -31,6 +31,9 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var wordList: WordListModel?
     /// The applications tab's model, retained for the same reason.
     private var appList: AppListModel?
+    /// The selected-tab model: the `Журнал…` row sets it to `.log` through
+    /// `show(selecting:)`, and the `TabView` binds to it.
+    private var tabs: SettingsTabModel?
 
     public init(
         engine: RukeyEngine,
@@ -45,11 +48,21 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    /// Shows the window, building it on first use.
+    /// Shows the window with the default (`Слова`) tab selected — the
+    /// `Настройки…` row's opener; building happens on first use.
     public func show() {
+        show(selecting: .words)
+    }
+
+    /// Shows the window with `tab` selected. The selection lives on the held
+    /// `SettingsTabModel` (never `@State`, which the Command-Line-Tools
+    /// toolchain cannot expand), so the `Журнал…` row can land on the log tab
+    /// while every other opener keeps the default.
+    public func show(selecting tab: SettingsTab) {
         if window == nil {
             buildWindow()
         }
+        tabs?.selection = tab
         window?.makeKeyAndOrderFront(nil)
         // The app is an accessory (`LSUIElement`): without explicit activation
         // the window would come up behind the frontmost application.
@@ -76,6 +89,9 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
             terminalsWriter: { [weak self] enabled in
                 self?.persistExcludeTerminals(enabled)
             })
+        // The tab-selection model; `show(selecting:)` writes it before the
+        // window is ordered front, and the `TabView` binds to it.
+        let tabs = SettingsTabModel()
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
@@ -87,12 +103,13 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         // Closing must not deallocate the window: `show()` reopens this one.
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
-            rootView: SettingsView(store: store, words: wordList, apps: appList))
+            rootView: SettingsView(store: store, words: wordList, apps: appList, tabs: tabs))
         window.delegate = self
         window.center()
 
         self.wordList = wordList
         self.appList = appList
+        self.tabs = tabs
         self.window = window
     }
 

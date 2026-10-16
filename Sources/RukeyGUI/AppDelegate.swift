@@ -43,6 +43,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// launch-at-login checkbox. Built with the engine (it holds the live
     /// engine objects); nil until the grant appears.
     private var settingsStore: SettingsStore?
+    /// The correction flash panel; built with the engine because corrections
+    /// can only arrive once the tap runs.
+    private var correctionFlash: CorrectionFlash?
+    /// The notification centre wrapper. Built **only** when this process is a
+    /// real `.app` bundle: `UNUserNotificationCenter.current()` aborts an
+    /// unbundled process and the default argument evaluates at the call site
+    /// (see `buildEngineIfNeeded`). Nil under `swift run` and in tests.
+    private var notificationService: NotificationService?
     /// Whether `engine.tapManager.start()` actually started the tap. A grant
     /// alone must not read "Работает": the status line distinguishes a real
     /// running tap from a failed start ("Не запущено").
@@ -61,12 +69,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // The Журнал tab exists in the settings window, but the plan never
-        // wires this row's opener: `onOpenLog` stays nil so the row stays
-        // disabled until a plan correction adds the wiring.
+        // The Журнал… row now opens the settings window on the log tab via
+        // `openLog()`; it used to be disabled while `onOpenLog` was nil.
         let statusItem = StatusItemController(
             onOpenSettings: { [weak self] in
                 self?.openSettings()
+            },
+            onOpenLog: { [weak self] in
+                self?.openLog()
             },
             onToggleLaunchAtLogin: { [weak self] enabled in
                 self?.setLaunchAtLogin(enabled)
@@ -132,6 +142,22 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 tapManager: engine.tapManager, learningController: learningController)
             self.engine = engine
             self.hub = hub
+            // The flash panel is plain AppKit and harmless anywhere; it is
+            // built with the engine so the first correction of the session
+            // already has its one reused panel.
+            self.correctionFlash = CorrectionFlash()
+            // `UNUserNotificationCenter.current()` aborts a process that is
+            // not a real bundle ("bundleProxyForCurrentProcess is nil"), and
+            // the service's default argument evaluates right here — so the
+            // service is constructed only when this process is the packaged
+            // `Rukey.app`. Under `swift run` and in tests the whole
+            // notification path stays quiet, and the hub's notifications
+            // fall to the nil-guard in `showUndoNotice`/`showLearnedNotice`.
+            if Bundle.main.bundleIdentifier != nil {
+                let service = NotificationService()
+                self.notificationService = service
+                Task { await service.requestAuthorization() }
+            }
             observe(hub)
             self.settingsStore = SettingsStore(
                 engine: engine, state: state, configFileURL: RukeyConfig.configFileURL)
@@ -166,6 +192,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.lastCorrection = CorrectionSummary(
                     original: decision.originalText, converted: decision.convertedText)
                 self?.refreshStatusModel()
+                self?.flashCorrection(decision)
             },
             hub.$lastLearned.sink { [weak self] notice in
                 guard let notice else { return }
@@ -174,8 +201,47 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.learnedWordBanner = LearnedWordBanner(
                     prefix: notice.prefix, converted: notice.converted)
                 self?.refreshStatusModel()
+                self?.showLearnedNotice(notice)
+            },
+            hub.$lastUndo.sink { [weak self] notice in
+                guard let notice else { return }
+                // Gated upstream by the learning controller's live
+                // `notifyProvider` (`state.notifyOnEveryUndo`), exactly like
+                // the console's own `Отменено:` line — never a second time
+                // here, or the menu and the banners would drift apart.
+                self?.showUndoNotice(notice)
             },
         ]
+    }
+
+    /// The corner panel: the tested formatter builds the string and the live
+    /// `showCorrectionFlash` setting decides whether it appears.
+    private func flashCorrection(_ decision: CorrectionDecision) {
+        guard state.showCorrectionFlash, let flash = correctionFlash else { return }
+        flash.show(
+            CorrectionFlash.text(
+                original: decision.originalText, converted: decision.convertedText))
+    }
+
+    /// The undo banner, already gated upstream (see `observe`). Quiet when no
+    /// bundle means no notification service exists.
+    private func showUndoNotice(_ notice: UndoNotice) {
+        guard let service = notificationService else { return }
+        Task {
+            await service.showUndoNotice(
+                prefix: notice.prefix, converted: notice.converted,
+                count: notice.count, threshold: notice.threshold)
+        }
+    }
+
+    /// The learned banner, always attempted — the same rule as the engine's
+    /// `Запомнено:` line, which is written whenever the word is learned.
+    private func showLearnedNotice(_ notice: LearnedNotice) {
+        guard let service = notificationService else { return }
+        Task {
+            await service.showLearnedNotice(
+                prefix: notice.prefix, converted: notice.converted)
+        }
     }
 
     /// Rebuilds the menu's snapshot from the live state and hands it over.
@@ -253,9 +319,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the general tab, so it needs the engine and the settings store — and
     /// both only exist once the grant has appeared; a click before that is a
     /// no-op, with the red status row already explaining why. The controller is
-    /// created once and reused.
+    /// created once and reused and `show()` lands on the default tab.
     private func openSettings() {
-        guard let engine, let settingsStore else { return }
+        makeSettingsWindowIfNeeded()?.show()
+    }
+
+    /// The `Журнал…` opener: the same window, opened on the log tab. The tab
+    /// selection is the window's held model (`SettingsTabModel`), which the
+    /// `TabView` binds to.
+    private func openLog() {
+        makeSettingsWindowIfNeeded()?.show(selecting: .log)
+    }
+
+    /// Builds the settings window on first use, against the engine and store
+    /// that only exist post-grant; returns nil before that, which keeps both
+    /// menu rows no-ops (the status row already explains why).
+    private func makeSettingsWindowIfNeeded() -> SettingsWindowController? {
+        guard let engine, let settingsStore else { return nil }
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 engine: engine,
@@ -265,7 +345,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.settingsWindowDidClose()
                 })
         }
-        settingsWindow?.show()
+        return settingsWindow
     }
 
     /// Closing the settings window triggers a status refresh; the refresh

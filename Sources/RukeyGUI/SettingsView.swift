@@ -244,6 +244,31 @@ public final class AppListModel: ObservableObject {
     }
 }
 
+/// The four settings tabs, in the spec's order.
+public enum SettingsTab: Hashable {
+    case words
+    case applications
+    case general
+    case log
+}
+
+/// The settings window's selected tab, held by `SettingsWindowController` and
+/// bound by the `TabView` below.
+///
+/// A held model rather than `@State`, for the same reason as the tabs' text
+/// fields: `State()` is a macro whose implementation plugin ships only with
+/// Xcode, and the Command-Line-Tools toolchain cannot expand it. Holding the
+/// selection here is also what lets the `Журнал…` menu row open the window on
+/// the log tab — the controller writes the model before ordering the window in.
+@MainActor
+public final class SettingsTabModel: ObservableObject {
+    @Published public var selection: SettingsTab
+
+    public init(selection: SettingsTab = .words) {
+        self.selection = selection
+    }
+}
+
 /// The settings window's SwiftUI root: the four tabs, in the spec's order.
 ///
 /// `Слова` and `Приложения` carry their models; `Общее` and `Журнал` bind
@@ -251,22 +276,27 @@ public final class AppListModel: ObservableObject {
 /// the window and the menu share one source of truth. No control uses `@State`
 /// — that is a macro whose implementation plugin ships only with Xcode; the
 /// Command-Line-Tools toolchain cannot expand it, so every control binds
-/// through the store.
+/// through the store or a held model (the selection included).
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
     @ObservedObject var words: WordListModel
     @ObservedObject var apps: AppListModel
+    @ObservedObject var tabs: SettingsTabModel
 
     var body: some View {
-        TabView {
+        TabView(selection: $tabs.selection) {
             WordsTab(words: words)
                 .tabItem { Text("Слова") }
+                .tag(SettingsTab.words)
             ApplicationsTab(apps: apps)
                 .tabItem { Text("Приложения") }
+                .tag(SettingsTab.applications)
             GeneralTab(store: store)
                 .tabItem { Text("Общее") }
+                .tag(SettingsTab.general)
             LogTab(store: store)
                 .tabItem { Text("Журнал") }
+                .tag(SettingsTab.log)
         }
         .frame(minWidth: 520, minHeight: 440)
     }
