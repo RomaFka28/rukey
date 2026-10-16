@@ -131,6 +131,10 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     /// The window openers; `nil` keeps the row disabled until the window exists
     /// (the settings window arrives in Task 4).
     private let onOpenSettings: (() -> Void)?
+    /// The pre-grant row's action: opens System Settings on the Accessibility
+    /// pane the red status row names (Review Focus 1 / Task 8 row 3). Hidden
+    /// when nil, same guard style as `onOpenSettings` below.
+    private let onOpenAccessibility: (() -> Void)?
     private let onOpenLog: (() -> Void)?
     private let onToggleLaunchAtLogin: (Bool) -> Void
     private let onRemoveLearnedWord: (String) -> Void
@@ -147,12 +151,14 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     public init(
         onOpenSettings: (() -> Void)? = nil,
+        onOpenAccessibility: (() -> Void)? = nil,
         onOpenLog: (() -> Void)? = nil,
         onToggleLaunchAtLogin: @escaping (Bool) -> Void = { _ in },
         onRemoveLearnedWord: @escaping (String) -> Void = { _ in },
         onRefreshModel: (() -> Void)? = nil
     ) {
         self.onOpenSettings = onOpenSettings
+        self.onOpenAccessibility = onOpenAccessibility
         self.onOpenLog = onOpenLog
         self.onToggleLaunchAtLogin = onToggleLaunchAtLogin
         self.onRemoveLearnedWord = onRemoveLearnedWord
@@ -209,7 +215,8 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// Menu order is exactly the spec's: status (disabled), current layout, last
     /// correction, learned-word banner, separator, launch-at-login checkbox,
-    /// `Настройки…`, `Журнал…`, separator, `Выйти`.
+    /// `Настройки…`, `Журнал…`, separator, `Выйти`. While the grant is missing,
+    /// an Accessibility opener follows the status row (Review Focus 1).
     private func rebuildMenu() {
         guard let model = renderedModel, let menu = statusItem.menu else { return }
         needsRebuild = false
@@ -224,6 +231,19 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
             attributes: [.foregroundColor: Self.statusColor(for: model)])
         status.isEnabled = false
         menu.addItem(status)
+
+        // Review Focus 1 / Task 8 row 3: while the grant is missing the settings
+        // window cannot be built, so the menu itself must offer a working button
+        // to the exact System Settings pane the red row names. Hidden when no
+        // handler is wired, like `settings.isEnabled` below.
+        if model.permission != .granted, onOpenAccessibility != nil {
+            let accessibility = NSMenuItem(
+                title: "Открыть настройки Accessibility",
+                action: #selector(openAccessibility(_:)), keyEquivalent: "")
+            accessibility.target = self
+            accessibility.isEnabled = true
+            menu.addItem(accessibility)
+        }
 
         let layout = NSMenuItem(title: model.layoutTitle, action: nil, keyEquivalent: "")
         layout.isEnabled = false
@@ -302,6 +322,10 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func removeLearnedWord(_ sender: NSMenuItem) {
         guard let word = sender.representedObject as? String else { return }
         onRemoveLearnedWord(word)
+    }
+
+    @objc private func openAccessibility(_ sender: NSMenuItem) {
+        onOpenAccessibility?()
     }
 
     @objc private func openSettings(_ sender: NSMenuItem) {

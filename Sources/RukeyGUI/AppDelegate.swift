@@ -75,6 +75,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             onOpenSettings: { [weak self] in
                 self?.openSettings()
             },
+            onOpenAccessibility: { [weak self] in
+                self?.openAccessibilitySettings()
+            },
             onOpenLog: { [weak self] in
                 self?.openLog()
             },
@@ -313,6 +316,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             LogBuffer.shared.log("Автозапуск: \(error)", level: .warn)
         }
         refreshStatusModel()
+    }
+
+    /// The pre-grant menu row's action (Review Focus 1 / Task 8 row 3): opens
+    /// the exact Accessibility pane the red status row names. The gate is held
+    /// here and survives without a grant; a refused open is surfaced as a
+    /// warning, so the row cannot look like it worked.
+    private func openAccessibilitySettings() {
+        if !gate.openSystemSettings() {
+            LogBuffer.shared.log(
+                "Не удалось открыть раздел Accessibility в System Settings.",
+                level: .warn)
+        }
     }
 
     /// The `Настройки…` opener. The window edits the live word lists and hosts
