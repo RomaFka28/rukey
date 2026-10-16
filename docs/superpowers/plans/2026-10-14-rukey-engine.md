@@ -1145,6 +1145,7 @@ git push
 
 **Files:**
 - Modify: `Sources/RukeyCore/EventTapManager.swift:74-108` (tap mask), `:281-284` (flagsChanged branch), `:122-124` (pass helper)
+- Create: `Sources/RukeyCore/TapPolicy.swift`
 - Create: `Tests/RukeyCoreTests/EventTapPolicyTests.swift`
 - Modify: `Sources/RukeyCore/SecureInputMonitor.swift`
 
@@ -1234,7 +1235,14 @@ In `Sources/RukeyCore/EventTapManager.swift`:
 
 - [ ] **Step 5: Make the app-exclusion settings mutable**
 
-In `Sources/RukeyCore/SecureInputMonitor.swift`, convert the stored `excludeTerminals` and `customExcludedBundleIDs` into lock-guarded computed properties with the same public names, so the settings window can change them without rebuilding the tap. Keep the initialiser signature unchanged so `EventTapManager.init` and existing call sites keep compiling.
+In `Sources/RukeyCore/SecureInputMonitor.swift`, make the app-exclusion settings mutable so the settings window can change them without rebuilding the tap.
+
+- `excludeTerminals` is currently a stored `public let` (`:29`), read in `shouldBypass` (`:90`). Convert it to `public var excludeTerminals: Bool { get set }` with a private backing store, guarded by an `NSLock`.
+- `customExcludedBundleIDs` is currently a stored **`private`** `let` (`:30`), read in `shouldBypass` (`:86`). It must become **`public var customExcludedBundleIDs: Set<String> { get set }`** — public, not merely private under the same name. The GUI plan consumes its setter in so many words: "Consumes: `SecureInputMonitor.customExcludedBundleIDs` and `.excludeTerminals` setters from the engine plan."
+- One private `NSLock` for both settings. A second `NSLock` *instance* is fine; introducing a different locking primitive is not. Do **not** reuse `cacheLock` — that guards the frontmost-app TTL cache and there is no reason to serialize the two. Make sure no path holds one lock while acquiring the other: `shouldBypassForActiveApplication` (`:97-102`) must not read the settings while `cacheLock` is held.
+- Reads inside `shouldBypass` (`:86,90`) must go through the same lock. Note `shouldBypassForActiveApplication()` runs on the per-keystroke path (`EventTapManager.swift:268`); one uncontended `NSLock` acquisition is negligible there next to the `IsSecureEventInputEnabled()` syscall that path already makes.
+- Keep the initialiser signature unchanged so `EventTapManager.init` and every existing call site keep compiling.
+- `isSecureInputActive()` and `shouldBypassForActiveApplication()` must stay distinct: Secure Input and app exclusions are different questions, and the layout toggle in Step 4 consults only the former.
 
 - [ ] **Step 6: Run the tests to see them pass**
 
