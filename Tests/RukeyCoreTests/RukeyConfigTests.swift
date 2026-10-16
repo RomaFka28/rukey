@@ -162,4 +162,57 @@ final class RukeyConfigTests: XCTestCase {
                 "the warning must name the parse failure, not a generic Cocoa message")
         }
     }
+
+    func testWriteRoundTripsEveryField() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("exclude-\(UUID().uuidString).json")
+        let config = RukeyConfig(
+            excludedWords: ["ghbdtn"],
+            excludeTerminals: true,
+            excludedBundleIDs: ["com.example.app"],
+            launchAtLogin: true,
+            autoLearnThreshold: 2,
+            notifyOnEveryUndo: false,
+            showCorrectionFlash: false,
+            minPrefixLength: 5,
+            verbose: true
+        )
+        XCTAssertTrue(RukeyConfig.write(config, to: url))
+        let reloaded = RukeyConfig.load(
+            excludeTerminalsFlag: false,
+            extraBundleIDs: [],
+            verbose: false,
+            configFileURL: url
+        )
+        XCTAssertEqual(reloaded.excludedWords, ["ghbdtn"])
+        XCTAssertEqual(reloaded.excludedBundleIDs, ["com.example.app"])
+        XCTAssertTrue(reloaded.excludeTerminals)
+        XCTAssertTrue(reloaded.launchAtLogin)
+        XCTAssertEqual(reloaded.autoLearnThreshold, 2)
+        XCTAssertFalse(reloaded.notifyOnEveryUndo)
+        XCTAssertFalse(reloaded.showCorrectionFlash)
+        XCTAssertEqual(reloaded.minPrefixLength, 5)
+        // `verbose` is CLI-only: the file never carries it.
+        XCTAssertFalse(reloaded.verbose)
+    }
+
+    func testWriteCreatesTheConfigDirectory() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rukey-\(UUID().uuidString)/nested/exclude.json")
+        XCTAssertTrue(RukeyConfig.write(RukeyConfig(), to: url))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testWriteFailureIsReported() {
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blocker-\(UUID().uuidString)")
+        XCTAssertTrue(FileManager.default.createFile(atPath: blocker.path, contents: Data()))
+        let buffer = LogBuffer()
+        XCTAssertFalse(RukeyConfig.write(
+            RukeyConfig(), to: blocker.appendingPathComponent("exclude.json"),
+            logBuffer: buffer))
+        XCTAssertTrue(buffer.lines().contains {
+            $0.level == .warn && $0.text.contains(blocker.path)
+        })
+    }
 }

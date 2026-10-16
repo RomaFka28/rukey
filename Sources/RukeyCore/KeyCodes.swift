@@ -17,19 +17,52 @@ public enum KeyCode {
 }
 
 /// Minimal logger to replace scattered `print` calls in the hot keystroke path.
-/// `isVerbose` gates debug output; warnings/errors always print.
+///
+/// Every line is appended to a `LogBuffer` — the daemon's `.shared` by default,
+/// so the GUI's log pane can read what the console saw — and, while
+/// `mirrorToStandardOutput` is true, also printed, which keeps `swift run rukey`
+/// behaving as it always has. `isVerbose` gates debug output; `warn` and `error`
+/// are buffered and mirrored unconditionally.
 public struct RukeyLogger: Sendable {
     public var isVerbose: Bool
+    /// When true, lines that pass their level gate are also written to standard
+    /// output. Settable so the GUI can silence the console once it owns the UI.
+    public var mirrorToStandardOutput: Bool
+    private let logBuffer: LogBuffer
 
-    public init(isVerbose: Bool = false) {
+    public init(
+        isVerbose: Bool = false,
+        mirrorToStandardOutput: Bool = true,
+        logBuffer: LogBuffer = .shared
+    ) {
         self.isVerbose = isVerbose
+        self.mirrorToStandardOutput = mirrorToStandardOutput
+        self.logBuffer = logBuffer
     }
 
     public func debug(_ message: @autoclosure () -> String) {
-        if isVerbose { print(message()) }
+        guard isVerbose else { return }
+        append(message(), level: .debug)
     }
 
     public func info(_ message: @autoclosure () -> String) {
-        print(message())
+        append(message(), level: .info)
+    }
+
+    public func warn(_ message: @autoclosure () -> String) {
+        append(message(), level: .warn)
+    }
+
+    public func error(_ message: @autoclosure () -> String) {
+        append(message(), level: .error)
+    }
+
+    /// The single point where a line reaches both consumers, so the buffer and
+    /// the console can never disagree about what was logged.
+    private func append(_ message: String, level: LogLine.Level) {
+        logBuffer.log(message, level: level)
+        if mirrorToStandardOutput {
+            print(message)
+        }
     }
 }

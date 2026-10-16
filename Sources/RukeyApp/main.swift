@@ -67,37 +67,35 @@ struct RukeyMain {
    exit(1)
   }
 
-  // 2. Load Dictionaries
-  print("⏳ Loading dictionaries...")
-  let loader = DictionaryLoader.shared
-  let enStart = Date()
-  let enTrie = loader.loadTrie(fromResource: "words_en")
-  print("EN loaded in \(String(format: "%.2f", Date().timeIntervalSince(enStart)))s.")
-  let ruStart = Date()
-  let ruTrie = loader.loadTrie(fromResource: "words_ru")
-  print("RU loaded in \(String(format: "%.2f", Date().timeIntervalSince(ruStart)))s.")
-  if enTrie.wordCount == 0 || ruTrie.wordCount == 0 {
-   if enTrie.wordCount == 0 {
+  // 2. Build the engine: dictionaries, detector, secure-input monitor and the
+  // event tap. The tap is deliberately not started here.
+  let engine: RukeyEngine
+  do {
+   engine = try RukeyEngine(config: config, verbose: verbose)
+  } catch RukeyEngineError.emptyDictionary(let resource) {
+   if resource == "words_en.txt" {
     print("❌ English dictionary is missing or empty (words_en: got 0 words). Check Resources/words_en.txt.")
-   }
-   if ruTrie.wordCount == 0 {
+   } else {
     print("❌ Russian dictionary is missing or empty (words_ru: got 0 words). Check Resources/words_ru.txt.")
    }
    exit(1)
+  } catch {
+   print("❌ Failed to initialize Rukey: \(error)")
+   exit(1)
   }
-  print("✅ Dictionaries loaded: \(enTrie.wordCount) EN words, \(ruTrie.wordCount) RU words.")
 
-  // 3. Initialize Engine & Event Tap
-  let detector = Detector(enTrie: enTrie, ruTrie: ruTrie, minPrefixLength: 3)
-  let secureMonitor = SecureInputMonitor(
-    excludeTerminals: config.excludeTerminals,
-    customExcludedBundleIDs: config.excludedBundleIDs
+  let tapManager = engine.tapManager
+  let learningController = UndoLearningController(
+   strikeStore: engine.strikeStore,
+   wordFilter: engine.wordFilter,
+   thresholdProvider: { config.autoLearnThreshold },
+   notifyProvider: { config.notifyOnEveryUndo },
+   configWriter: { words in
+    var updated = config
+    updated.excludedWords = words.sorted()
+    RukeyConfig.write(updated, to: RukeyConfig.configFileURL, logBuffer: LogBuffer.shared)
+   }
   )
-  let tapManager = EventTapManager(detector: detector, secureMonitor: secureMonitor)
-  tapManager.logger = RukeyLogger(isVerbose: verbose)
-  if verbose {
-   print("🔍 Verbose debug logging active.")
-  }
   tapManager.onCorrection = { decision in
    print(
     "⚡ [Auto-Correct] '\(decision.originalText)' -> '\(decision.convertedText)' (\(decision.sourceLanguage.rawValue) -> \(decision.targetLanguage.rawValue), rule: \(decision.triggerRule))"
@@ -107,6 +105,7 @@ struct RukeyMain {
   tapManager.onOptionUndo = { from, restored in
    print("⌥ [Option] Undo: restored '\(restored)' with layout \(from.rawValue)")
    printLangState(tapManager.inputSourceManager)
+   learningController.handleUndo(tapManager.undoManager.lastUndone)
   }
 
   tapManager.onOptionToggle = { from, to in

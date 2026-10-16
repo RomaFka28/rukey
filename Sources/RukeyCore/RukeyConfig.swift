@@ -94,8 +94,52 @@ public struct RukeyConfig: Sendable {
     return config
   }
 
+  /// Writes the whole config atomically to `url`, creating the `~/.config/rukey`
+  /// directory when it does not exist. The one writer for this schema: callers
+  /// mutate their own copy and hand it over whole, so no two writers can drop
+  /// each other's fields. Keys outside the schema are not preserved — the file
+  /// belongs to the app — and `verbose` is CLI-only and stays out of it.
+  /// - Returns: `false`, and one `.warn` line, when the write fails.
+  @discardableResult
+  public static func write(
+    _ config: RukeyConfig,
+    to url: URL = RukeyConfig.configFileURL,
+    logBuffer: LogBuffer = LogBuffer.shared
+  ) -> Bool {
+    // The same `FileShape` that reads the file defines what a write may carry,
+    // so a key cannot be added to one side only. Every value below is non-nil,
+    // so the synthesized encoder emits all eight keys.
+    let shape = FileShape(
+      excludeBundleIDs: config.excludedBundleIDs.sorted(),
+      excludedWords: config.excludedWords,
+      excludeTerminals: config.excludeTerminals,
+      launchAtLogin: config.launchAtLogin,
+      autoLearnThreshold: config.autoLearnThreshold,
+      notifyOnEveryUndo: config.notifyOnEveryUndo,
+      showCorrectionFlash: config.showCorrectionFlash,
+      minPrefixLength: config.minPrefixLength
+    )
+    do {
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      let data = try encoder.encode(shape)
+      // `~/.config/rukey` does not exist on a fresh install.
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try data.write(to: url, options: .atomic)
+      return true
+    } catch {
+      // Same shape as `readFile`'s warning: the path and the underlying reason.
+      logBuffer.log(
+        "Could not write \(url.path): \(describe(error)).",
+        level: .warn
+      )
+      return false
+    }
+  }
+
   /// Every key is optional so a config file written by an older build still decodes.
-  private struct FileShape: Decodable {
+  private struct FileShape: Codable {
     var excludeBundleIDs: [String]?
     var excludedWords: [String]?
     var excludeTerminals: Bool?
