@@ -1797,7 +1797,14 @@ final class UndoLearningTests: XCTestCase {
             h.controller.handleUndo((original: "ghb", converted: "при"))
         }
         XCTAssertTrue(h.filter.isExcluded("ghb"))
-        XCTAssertTrue(h.filter.isPrefixOfExcluded("ghbdtn"))
+        // The learned word is inert from its first keystroke: every shorter run
+        // toward it is a prefix of an excluded word.
+        XCTAssertTrue(h.filter.isPrefixOfExcluded("g"))
+        XCTAssertTrue(h.filter.isPrefixOfExcluded("gh"))
+        // `isPrefixOfExcluded` asks "is this a prefix of an excluded word", not
+        // the other way around: a longer word that merely starts with the
+        // learned word is not protected, so `ghbdtn` → `привет` still converts.
+        XCTAssertFalse(h.filter.isPrefixOfExcluded("ghbdtn"))
     }
 
     func testLearningPersistsToConfigExactlyOnce() {
