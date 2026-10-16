@@ -26,10 +26,12 @@ public struct LogLine: Identifiable, Sendable {
 
 /// Fixed-capacity ring of log lines, for the GUI's log pane and for tests.
 ///
-/// Backing stores are injected rather than read from `LogBuffer.shared` so a test
-/// never sees the daemon's own lines. Writes are lossy by design: once the ring is
-/// full the oldest line is dropped.
+/// Buffers are injected rather than read from `LogBuffer.shared` so a test never
+/// sees the daemon's own lines. Writes are lossy by design: once the ring is full
+/// the oldest line is dropped.
 public final class LogBuffer: @unchecked Sendable {
+    // `@unchecked` is sound because all mutable state is reachable only inside
+    // `lock.withLock`, and `LogLine` itself is a `Sendable` value type.
     /// Process-wide buffer used by the daemon.
     public static let shared = LogBuffer()
 

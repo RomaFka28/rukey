@@ -42,6 +42,12 @@ public struct RukeyConfig: Sendable {
       .appendingPathComponent(".config/rukey/exclude.json")
   }
 
+  /// Values `autoLearnThreshold` may take, per spec §7 and the GUI stepper.
+  public static let autoLearnThresholds = [0, 2, 3, 5]
+  /// Inclusive range `minPrefixLength` may take. Below 2 the short-word guard in
+  /// `Detector` collapses; above 5 a legit word stops converting.
+  public static let minPrefixLengthRange = 2...5
+
   /// Merges CLI extras with values from the config file.
   ///
   /// Boolean flag semantics are a union, matching the bundle ID merge: an explicit
@@ -76,10 +82,15 @@ public struct RukeyConfig: Sendable {
     config.excludedWords = cleaned(shape.excludedWords ?? [])
     config.excludeTerminals = excludeTerminalsFlag || (shape.excludeTerminals ?? false)
     config.launchAtLogin = shape.launchAtLogin ?? config.launchAtLogin
-    config.autoLearnThreshold = shape.autoLearnThreshold ?? config.autoLearnThreshold
+    config.autoLearnThreshold = validated(
+      shape.autoLearnThreshold, key: "autoLearnThreshold", admissible: Self.autoLearnThresholds,
+      fallback: config.autoLearnThreshold, logBuffer: logBuffer)
     config.notifyOnEveryUndo = shape.notifyOnEveryUndo ?? config.notifyOnEveryUndo
     config.showCorrectionFlash = shape.showCorrectionFlash ?? config.showCorrectionFlash
-    config.minPrefixLength = shape.minPrefixLength ?? config.minPrefixLength
+    config.minPrefixLength = validated(
+      shape.minPrefixLength, key: "minPrefixLength",
+      admissible: Array(Self.minPrefixLengthRange),
+      fallback: config.minPrefixLength, logBuffer: logBuffer)
     return config
   }
 
@@ -103,15 +114,77 @@ public struct RukeyConfig: Sendable {
       // The old code swallowed this and silently fell back to defaults; report it
       // so a user who mistyped their config learns why their settings are ignored.
       logBuffer.log(
-        "Could not read \(url.path): \(error.localizedDescription). Using CLI flags only.",
+        "Could not use \(url.path): \(describe(error)). Using CLI values only.",
         level: .warn
       )
       return nil
     }
   }
 
+  /// `DecodingError.localizedDescription` is a generic Cocoa string ("The data
+  /// couldn't be read because it isn't in the correct format."), and so is
+  /// `context.underlyingError.localizedDescription` — on this toolchain the
+  /// position of the stray comma lives one level deeper, in the underlying
+  /// `NSError`'s `NSDebugDescriptionErrorKey`. Surface it, or the user is told
+  /// that something is wrong but not what.
+  private static func describe(_ error: Error) -> String {
+    guard let decoding = error as? DecodingError else { return trimmed(error.localizedDescription) }
+    let reason: String
+    switch decoding {
+    case .dataCorrupted(let context):
+      if let underlying = context.underlyingError as NSError?,
+        let detail = underlying.userInfo[NSDebugDescriptionErrorKey] as? String
+      {
+        reason = detail
+      } else {
+        reason = context.debugDescription
+      }
+    case .keyNotFound(let key, let context):
+      reason = "missing key \"\(key.stringValue)\": \(context.debugDescription)"
+    case .typeMismatch(let type, let context):
+      reason = "wrong type for \(type): \(context.debugDescription)"
+    case .valueNotFound(let type, let context):
+      reason = "missing value for \(type): \(context.debugDescription)"
+    @unknown default:
+      reason = String(describing: decoding)
+    }
+    return trimmed(reason)
+  }
+
+  /// Foundation's debug strings end in a period and the caller adds its own.
+  private static func trimmed(_ text: String) -> String {
+    var text = text
+    while text.hasSuffix(".") { text.removeLast() }
+    return text
+  }
+
   private static func cleaned(_ values: [String]) -> [String] {
     values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+  }
+
+  /// Keeps a numeric key only when it is admissible.
+  ///
+  /// A hand-edited file bypasses the GUI's clamps, and `{"minPrefixLength": 0}`
+  /// would dismantle the short-word guard. An out-of-range value falls back to the
+  /// documented default and warns — it is *not* clamped to the nearest admissible
+  /// value, because silently substituting a value the user never wrote is exactly
+  /// what a visible fall-back exists to prevent.
+  private static func validated(
+    _ value: Int?,
+    key: String,
+    admissible: [Int],
+    fallback: Int,
+    logBuffer: LogBuffer
+  ) -> Int {
+    guard let value else { return fallback }
+    guard !admissible.contains(value) else { return value }
+    logBuffer.log(
+      "\(key) = \(value) is out of range (admissible: "
+        + "\(admissible.map(String.init).joined(separator: ", "))); "
+        + "falling back to \(fallback).",
+      level: .warn
+    )
+    return fallback
   }
 }

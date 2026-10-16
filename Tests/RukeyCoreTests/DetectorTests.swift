@@ -42,10 +42,11 @@ final class DetectorTests: XCTestCase {
     }
 
     func testJunkBackedPrefixDoesNotFlipOnTheFly() {
-        // "bebra" sits alone behind the "beb" prefix, so with a high bar the
-        // mid-word flip must not fire.
+        // "ghb" -> "при" is backed by exactly two RU entries (привет, приветствие),
+        // one below the bar of 3 — the mid-word flip must not fire.
+        // (testWellBackedPrefixFlipsOnTheFly flips the very same buffer at a bar of 2.)
         XCTAssertNil(makeDetector(minTargetCompletions: 3).evaluate(
-            buffer: "beb", currentLanguage: .english))
+            buffer: "ghb", currentLanguage: .english))
     }
 
     func testWellBackedPrefixFlipsOnTheFly() {

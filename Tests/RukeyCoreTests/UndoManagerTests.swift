@@ -16,8 +16,9 @@ final class UndoManagerTests: XCTestCase {
     }
 
     func testNothingToUndoBeforeAnyCorrection() {
-        XCTAssertFalse(RukeyUndoManager().canUndo)
-        XCTAssertNil(RukeyUndoManager().calculateUndo())
+        let manager = RukeyUndoManager()
+        XCTAssertFalse(manager.canUndo)
+        XCTAssertNil(manager.calculateUndo())
     }
 
     func testRecordedCorrectionIsUndoable() {
