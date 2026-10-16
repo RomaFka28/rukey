@@ -61,8 +61,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // The log window does not exist yet (Task 6); its menu row stays
-        // disabled until the opener is wired (nil below).
+        // The Журнал tab exists in the settings window, but the plan never
+        // wires this row's opener: `onOpenLog` stays nil so the row stays
+        // disabled until a plan correction adds the wiring.
         let statusItem = StatusItemController(
             onOpenSettings: { [weak self] in
                 self?.openSettings()

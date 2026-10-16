@@ -287,9 +287,16 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let enabled = sender.state != .on
-        // Immediate feedback; the owner's rebuilt model confirms or corrects it.
+        // Immediate feedback; the close-time rebuild below re-grounds the item
+        // from the last model `update(_:)` validated, so a refused or
+        // rolled-back toggle cannot stick.
         sender.state = enabled ? .on : .off
         onToggleLaunchAtLogin(enabled)
+        // `update(_:)` early-returns when its model did not change — which is
+        // exactly the refused-toggle and rolled-back cases — so the rebuild
+        // has to be requested here, or the optimistic flip would never be
+        // corrected on close.
+        needsRebuild = true
     }
 
     @objc private func removeLearnedWord(_ sender: NSMenuItem) {

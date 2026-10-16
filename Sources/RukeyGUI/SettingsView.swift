@@ -186,9 +186,12 @@ public final class AppListModel: ObservableObject {
 
     /// Re-reads the exclusions from the live monitor. The tab calls this when
     /// it appears, so a change made elsewhere shows up without reopening the
-    /// window — same contract as the words tab's `refresh()`.
+    /// window — same contract as the words tab's `refresh()`. The terminal
+    /// flag is re-grounded too: the general tab toggles the same live monitor,
+    /// and this keeps the applications checkbox from showing a stale value.
     public func refresh() {
         excludedBundleIDs = monitor.customExcludedBundleIDs.sorted()
+        excludeTerminals = monitor.excludeTerminals
     }
 
     /// Enumerates the installed applications off the main actor. Called when

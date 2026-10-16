@@ -122,13 +122,16 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The terminal checkbox's writer: same path, one flag. The monitor itself
-    /// is set by the model before this runs.
+    /// is set by the model before this runs. The store is republished at the
+    /// end too: the general tab binds through it, and without a change signal
+    /// its body would keep showing the pre-toggle value.
     private func persistExcludeTerminals(_ enabled: Bool) {
         var current = RukeyConfig.load(
             excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
         current.excludeTerminals = enabled
         RukeyConfig.write(current, to: RukeyConfig.configFileURL)
         state.excludeTerminals = current.excludeTerminals
+        store.objectWillChange.send()
     }
 
     // MARK: - NSWindowDelegate
