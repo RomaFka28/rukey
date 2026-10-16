@@ -355,6 +355,7 @@ final class DetectorTests: XCTestCase {
 In `Tests/RukeyCoreTests/UndoManagerTests.swift`:
 
 ```swift
+import Foundation
 import XCTest
 @testable import RukeyCore
 
@@ -981,6 +982,7 @@ public final class RukeyUndoManager: @unchecked Sendable {
 Replace `Tests/RukeyCoreTests/UndoManagerTests.swift` with a version that has no clock at all and adds tail behaviour:
 
 ```swift
+import Foundation
 import XCTest
 @testable import RukeyCore
 
@@ -999,16 +1001,18 @@ final class UndoManagerTests: XCTestCase {
     }
 
     func testNothingToUndoBeforeAnyCorrection() {
-        XCTAssertFalse(RukeyUndoManager().canUndo)
-        XCTAssertNil(RukeyUndoManager().calculateUndo())
+        let manager = RukeyUndoManager()
+        XCTAssertFalse(manager.canUndo)
+        XCTAssertNil(manager.calculateUndo())
     }
 
     func testUndoSurvivesAnArbitrarilyLongPause() {
         let manager = RukeyUndoManager()
         manager.recordCorrection(decision())
-        // No clock is injected any more, so there is no way to express expiry.
-        // Sleeping is deliberately avoided; the assertion is that nothing in
-        // the type can time out.
+        // The old implementation expired the undo after 1.2 s. Sleeping past that
+        // window is the only way this assertion can fail: without the sleep the
+        // test passes on the time-gated implementation too and pins nothing.
+        Thread.sleep(forTimeInterval: 1.5)
         XCTAssertTrue(manager.canUndo)
     }
 
@@ -1099,7 +1103,7 @@ Append to `Tests/RukeyCoreTests/DetectorTests.swift` — this pins Review Focus 
 - [ ] **Step 3: Run the tests to see them fail**
 
 Run: `swift test --filter UndoManagerTests 2>&1 | tail -30`
-Expected: FAIL to compile — `appendToTail` does not exist, and `RukeyUndoManager.init()` still requires no arguments only because the clock has a default.
+Expected: FAIL to compile — `appendToTail` does not exist. (`RukeyUndoManager()` itself still compiles today because its clock parameter has a default; Step 4 deletes that parameter.)
 
 - [ ] **Step 4: Rewrite `RukeyUndoManager`**
 
