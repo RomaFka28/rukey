@@ -28,8 +28,8 @@ Failure modes this plan implies but no automated test can reach. Each is pinned 
 1. **App launched without the Accessibility grant.** Expectation: red status in the menu bar, a working button that opens the right System Settings pane, and the app waiting — not exiting, not silently doing nothing. Manual, Task 2.
 2. **Rebuild after the first successful grant.** Expectation: the grant survives, because the bundle is signed with the stable self-signed certificate from Task 1. If it does not, Task 1 is wrong and must be fixed before any UI work proceeds. Manual, Task 1.
 3. **Menu closed while a correction notification is pending.** Expectation: no crash, no lost state, and the menu shows a readable summary afterwards. Manual, Task 3.
-4. **Two words learned in the same session.** Expectation: both appear in the settings list, neither overwrites the other, and the config file written to disk is the union. Test, Task 5.
-5. **User removes a word that was learned.** Expectation: it disappears from the filter immediately and stays gone after a restart, because the removal is written to `exclude.json`, not just to memory. Test, Task 5.
+4. **Two words learned in the same session.** Expectation: both appear in the settings list, neither overwrites the other, and the config file written to disk is the union. Test, Task 4.
+5. **User removes a word that was learned.** Expectation: it disappears from the filter immediately and stays gone after a restart, because the removal is written to `exclude.json`, not just to memory. Test, Task 4.
 
 ---
 
@@ -75,7 +75,7 @@ Failure modes this plan implies but no automated test can reach. Each is pinned 
 `tools/make-signing-cert.sh` must:
 
 1. Check for an existing key named `Rukey Local Signing` in the login keychain via `security find-identity -v -p codesigning` and exit 0 if found.
-2. Otherwise generate a key with `openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/rukey-key.pem -out /tmp/rukey-cert.pem -days 3650 -subj "/CN=Rukey Local Signing"`, import both into a temporary keychain with `security import`, and mark the cert trusted for code signing with `security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db`.
+2. Otherwise generate a key with `openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/rukey-key.pem -out /tmp/rukey-cert.pem -days 3650 -subj "/CN=Rukey Local Signing"` — plus `-addext` entries for `basicConstraints=critical,CA:FALSE`, `keyUsage=critical,digitalSignature` and `extendedKeyUsage=critical,codeSigning` (without the codeSigning EKU the certificate never appears in `security find-identity -p codesigning`, so step 3's own check could not pass). Import both into the **login keychain** with `security import … -T /usr/bin/codesign` — the identity must live as long as the Accessibility grant (TCC keys off the leaf certificate hash across rebuilds), so a temporary keychain is not an option — delete the plaintext key PEM after the import, and mark the cert trusted for code signing in the **user domain** with `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db` (no `-d`: the admin domain needs authorization and changes nothing for this workflow; run from a regular Terminal if macOS refuses the trust change non-interactively).
 3. Print the SHA-1 hash `security find-identity -v -p codesigning` reports, because `package-app.sh` needs it.
 4. Never delete or overwrite an existing identity.
 
@@ -135,7 +135,7 @@ git push
 ### Task 2: GUI target, permission UX and tap lifecycle
 
 **Files:**
-- Modify: `Package.swift` — add `.executableTarget(name: "RukeyGUI", dependencies: ["RukeyCore"])`
+- Modify: `Package.swift` — add `.executableTarget(name: "RukeyGUI", dependencies: ["RukeyCore"], exclude: ["Resources"])` (the `Info.plist` under `Resources/` is packaging input, not a SwiftPM resource — without the exclusion SwiftPM warns about it)
 - Modify: `tools/package-app.sh` — switch its executable-product variable from `rukey` to `RukeyGUI`
 - Create: `Sources/RukeyGUI/main.swift`
 - Create: `Sources/RukeyGUI/AppDelegate.swift`
@@ -202,7 +202,7 @@ final class PermissionGateTests: XCTestCase {
     }
 
     func testDeniedIsReported() {
-        var trusted = false
+        let trusted = false
         let gate = PermissionGate { trusted }
         gate.start()
         gate.pollNow()
@@ -211,7 +211,7 @@ final class PermissionGateTests: XCTestCase {
     }
 
     func testChangeCallbackFiresOnlyOnTransition() {
-        var trusted = false
+        let trusted = false
         var calls: [PermissionState] = []
         let gate = PermissionGate { trusted }
         gate.onChange = { calls.append($0) }
@@ -387,7 +387,7 @@ final class StatusMenuModelTests: XCTestCase {
 }
 ```
 
-Put these in a `RukeyGUITests` target. Add it to `Package.swift` alongside `RukeyCoreTests`.
+Put these in a `RukeyGUITests` target. Add it to `Package.swift` alongside `RukeyCoreTests` with `dependencies: ["RukeyGUI", "RukeyCore"]`, since the tests name core types directly.
 
 - [ ] **Step 2: Run the test to see it fail**
 
@@ -457,6 +457,7 @@ The add/remove flow is the part worth testing; the SwiftUI layout is not. Extrac
 
 ```swift
 import XCTest
+@testable import RukeyCore
 @testable import RukeyGUI
 
 @MainActor
@@ -588,6 +589,7 @@ git push
 **Files:**
 - Create: `Sources/RukeyGUI/AppPicker.swift`
 - Modify: `Sources/RukeyGUI/SettingsView.swift`
+- Modify: `Sources/RukeyGUI/SettingsWindowController.swift` — the picker's sheet needs the window as its parent
 
 **Interfaces:**
 - Consumes: `SecureInputMonitor.customExcludedBundleIDs` and `.excludeTerminals` setters from the engine plan.
@@ -690,9 +692,11 @@ git push
 **Files:**
 - Modify: `Sources/RukeyGUI/SettingsView.swift`
 - Create: `Sources/RukeyGUI/SettingsStore.swift`
+- Modify: `Sources/RukeyGUI/SettingsWindowController.swift` — hosts the store for the general and log tabs
+- Modify: `Sources/RukeyGUI/AppDelegate.swift` — owns the `SettingsStore` and passes it to the controller
 
 **Interfaces:**
-- Consumes: `Detector.minPrefixLength` setter, `RukeyConfig` (`load`/`write`/`configFileURL`), `SettingsState`, `LogBuffer`, `LaunchAgents`.
+- Consumes: `Detector.minPrefixLength` setter, `RukeyConfig` (`load`/`write`/`configFileURL`), `SettingsState`, `LogBuffer`.
 - Produces:
 
 ```swift
@@ -920,6 +924,7 @@ git push
 
 **Files:**
 - Modify: `README.md`
+- Carried from the review-focus audit: `Sources/RukeyGUI/StatusItemController.swift` and `Sources/RukeyGUI/AppDelegate.swift` gained the pre-grant «Открыть настройки Accessibility» row promised by Review Focus 1 and row 3 (a named manual check, no test pin).
 
 **Interfaces:**
 - Consumes: everything above.
