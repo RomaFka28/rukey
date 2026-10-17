@@ -128,12 +128,13 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private let statusItem: NSStatusItem
-    /// The window openers; `nil` keeps the row disabled until the window exists
-    /// (the settings window arrives in Task 4).
+    /// The window openers; `nil` keeps the corresponding row disabled. The app
+    /// wires both from launch — a pre-grant click is a no-op, because the
+    /// settings window is built from the engine on the first grant.
     private let onOpenSettings: (() -> Void)?
     /// The pre-grant row's action: opens System Settings on the Accessibility
     /// pane the red status row names (Review Focus 1 / Task 8 row 3). Hidden
-    /// when nil, same guard style as `onOpenSettings` below.
+    /// when nil, same guard style as `onOpenSettings`.
     private let onOpenAccessibility: (() -> Void)?
     private let onOpenLog: (() -> Void)?
     private let onToggleLaunchAtLogin: (Bool) -> Void

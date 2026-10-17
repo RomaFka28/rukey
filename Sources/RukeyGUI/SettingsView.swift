@@ -52,8 +52,8 @@ public final class WordListModel: ObservableObject {
     }
 
     /// Re-reads both lists from the live objects. The tab calls this when it
-    /// appears, so a word learned by the engine while the window was already
-    /// open shows up without reopening the window.
+    /// appears: a word learned while the window was open shows up the next
+    /// time the tab appears — nothing observes the lists live.
     public func refresh() {
         excludedWords = filter.words.sorted()
         taughtWords = dictionary.words.sorted()

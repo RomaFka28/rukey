@@ -16,11 +16,14 @@ final class WordListModelTests: XCTestCase {
 
     func testBlankInputIsIgnored() {
         let filter = WordFilter()
+        var written: [Set<String>] = []
         let model = WordListModel(
             filter: filter, dictionary: CustomDictionary(fileURL: temporaryURL()),
-            strikeStore: StrikeStore(fileURL: temporaryURL()), writer: { _ in })
+            strikeStore: StrikeStore(fileURL: temporaryURL()),
+            writer: { written.append($0) })
         model.addExcluded("   ")
         XCTAssertTrue(filter.isEmpty)
+        XCTAssertTrue(written.isEmpty)
     }
 
     func testDuplicatesAreRejected() {

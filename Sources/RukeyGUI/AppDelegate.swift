@@ -56,7 +56,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// running tap from a failed start ("Не запущено").
     private var tapRunning = false
     /// The hub-derived menu state: the last correction and the newest learned
-    /// word. The learned banner stays until the user removes the word.
+    /// word. The learned banner shows the newest word and clears when the user
+    /// removes it — a newer learned word replaces it.
     private var lastCorrection: CorrectionSummary?
     private var learnedWordBanner: LearnedWordBanner?
 
