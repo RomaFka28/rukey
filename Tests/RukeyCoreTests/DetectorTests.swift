@@ -183,9 +183,10 @@ final class DetectorTests: XCTestCase {
     }
 
     func testTaughtWordConvertsAtWordBoundary() {
-        // "заозкздзаоз" is exactly what "pfjprplpfjp" spells. The word must be
-        // comma-free: `б` sits on the comma key, so a word containing it types
-        // with an interior comma, which splits the script run and yields nil.
+        // "заозкздзаоз" is exactly what "pfjprplpfjp" spells. The word is kept
+        // comma-free so this stays a run-path test: `б` sits on the comma key,
+        // so a word containing it types with an interior comma and is handled
+        // by the punctuated path instead (see the interior-punctuation tests).
         let (detector, _) = makeTaughtDetector(words: ["заозкздзаоз"])
         let decision = detector.evaluateFullWord(
             buffer: "pfjprplpfjp", currentLanguage: .russian)
@@ -412,5 +413,98 @@ final class DetectorTests: XCTestCase {
         detector.minPrefixLength = 2
         XCTAssertEqual(
             detector.evaluate(buffer: "gh", currentLanguage: .english)?.convertedText, "пр")
+    }
+
+    // MARK: - Words with interior punctuation
+
+    func testInteriorPunctuationWordsConvertAtTheBoundary() {
+        // `б`, `ю`, `х`, `ъ`, `ё` sit on punctuation keys, so these words type
+        // with punctuation strictly inside the token (`hf,jnftn` spells
+        // `работает`). The run path splits on that punctuation and can only
+        // ever see a fragment — before the fix these stayed Latin at the
+        // boundary; the fragment was sometimes converted instead of the word.
+        let detector = makeDetector()
+        let cases = [
+            ("hf,jnftn", "работает"),
+            ("k.,bn", "любит"),
+            ("e[j", "ухо"),
+            ("j,]zcybnm", "объяснить"),
+            ("j,]`v", "объём"),
+        ]
+        for (typing, word) in cases {
+            let decision = detector.evaluateFullWord(buffer: typing, currentLanguage: .english)
+            XCTAssertEqual(decision?.convertedText, word, "typing: \(typing)")
+            XCTAssertEqual(decision?.originalText, typing, "typing: \(typing)")
+            XCTAssertEqual(
+                decision?.triggerRule, "full_word_punct_faithful", "typing: \(typing)")
+        }
+    }
+
+    func testInteriorPunctuationWithTrailingCommaKeepsTheComma() {
+        // Interior punctuation plus a real trailing edge: H1 fails
+        // (`работаетб` is not a word), so H2 converts the core and re-attaches
+        // the comma verbatim. This arm already worked before the fix — pinned
+        // so the guard widening cannot regress it.
+        let decision = makeDetector().evaluateFullWord(
+            buffer: "hf,jnftn,", currentLanguage: .english)
+        XCTAssertEqual(decision?.convertedText, "работает,")
+        XCTAssertEqual(decision?.originalText, "hf,jnftn,")
+    }
+
+    func testWholeTokenBeatsATailFragmentThatIsItselfAWord() {
+        // Pre-fix the run path fired first and converted only the tail: with
+        // the run path ahead of the punctuated path, `,tkrf` became `,елка`
+        // and `,tlf` became `,еда`. The token path must win when it can read
+        // the whole token faithfully.
+        let detector = makeDetector()
+        let belka = detector.evaluateFullWord(buffer: ",tkrf", currentLanguage: .english)
+        XCTAssertEqual(belka?.convertedText, "белка")
+        XCTAssertEqual(belka?.originalText, ",tkrf")
+        XCTAssertEqual(belka?.triggerRule, "full_word_punct_faithful")
+        let beda = detector.evaluateFullWord(buffer: ",tlf", currentLanguage: .english)
+        XCTAssertEqual(beda?.convertedText, "беда")
+        XCTAssertEqual(beda?.originalText, ",tlf")
+    }
+
+    func testWholeTokenBeatsATailFragmentThatHitsTheShippedJunkEntry() {
+        // Mirrors the shipped `[jhjij` → `[орошо` corruption: the tail `jhjij`
+        // matched the truncated dictionary entry `орошо` and the run path
+        // converted just that fragment, stranding the bracket. The fixture
+        // dictionary keeps that entry on purpose — the outcome must not depend
+        // on it having been deleted.
+        let decision = makeDetector().evaluateFullWord(
+            buffer: "[jhjij", currentLanguage: .english)
+        XCTAssertEqual(decision?.convertedText, "хорошо")
+        XCTAssertEqual(decision?.originalText, "[jhjij")
+        XCTAssertEqual(decision?.triggerRule, "full_word_punct_faithful")
+    }
+
+    func testRunPathStillFiresWhenTheTokenHasNoFaithfulReading() {
+        // The reorder keeps the run path as the fallback: `hello,ghbdtn` has no
+        // faithful whole-token reading, so the trailing run must still convert
+        // — and only it, leaving the text before the comma alone.
+        let decision = makeDetector().evaluateFullWord(
+            buffer: "hello,ghbdtn", currentLanguage: .english)
+        XCTAssertEqual(decision?.convertedText, "привет")
+        XCTAssertEqual(decision?.originalText, "ghbdtn")
+    }
+
+    // MARK: - Fragment runs after punctuation keys
+
+    func testFragmentAfterLetterTypingPunctuationDoesNotFlipMidWord() {
+        // `,` types `б`, so `j,]zcy` is a fragment of `j,]zcybnm`
+        // (`объяснить`). Flipping the fragment (`zcy` → `ясн`) would strand
+        // the earlier characters — the same mechanism as the shipped
+        // `[jhji` → `[оро…`. The whole token is judged at the boundary.
+        let detector = makeDetector()
+        XCTAssertNil(detector.evaluate(buffer: "j,]zcy", currentLanguage: .english))
+    }
+
+    func testRunAfterPlainPunctuationStillFlipsMidWord() {
+        // A parenthesis is not a letter key: `(ghb` still flips on the fly.
+        let detector = makeDetector(minTargetCompletions: 2)
+        XCTAssertEqual(
+            detector.evaluate(buffer: "(ghb", currentLanguage: .english)?.convertedText,
+            "при")
     }
 }

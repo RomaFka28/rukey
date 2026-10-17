@@ -170,22 +170,57 @@ public final class Detector: @unchecked Sendable {
         guard let (word, bufferLang) = candidateWord(from: buffer, minLength: minPrefixLength) else {
             return nil
         }
+        // A run starting right after a punctuation key that types a letter (`,` types
+        // `б`, `[` types `х`, …) is a fragment of a longer token: the characters
+        // before it are still unconverted layout output, so flipping the fragment
+        // strands them (`[jhji` grew into `[оро…`, `,tkr` into `,елк…`). Such tokens
+        // are judged as a whole at the next word boundary instead — `evaluateFullWord`
+        // gives the punctuated path the first say.
+        if isFragmentOfPunctuatedToken(buffer: buffer, runLength: word.count, runLanguage: bufferLang) {
+            return nil
+        }
         return decisionIfMistyped(word: word, bufferLang: bufferLang, fullWord: false)
+    }
+
+    /// True when the trailing run starts right after a punctuation key that types
+    /// a letter of the run's target alphabet (`[` → `х`, `,` → `б`, …). Flipping
+    /// such a fragment would strand the unconverted characters before it, so the
+    /// on-the-fly conversion is refused and the whole token is judged at the
+    /// boundary. A run at the very start of the buffer, or one preceded by a
+    /// letter or by key-unmapped punctuation (`(`, `!`, …), is not affected.
+    private func isFragmentOfPunctuatedToken(
+        buffer: String, runLength: Int, runLanguage: Language
+    ) -> Bool {
+        let prefix = buffer.dropLast(runLength)
+        guard let preceding = prefix.last,
+              preceding.unicodeScalars.count == 1,
+              let scalar = preceding.unicodeScalars.first
+        else { return false }
+        guard LayoutConverter.alphabet(of: scalar) == nil else { return false }
+        let mapped = LayoutConverter.convert(String(preceding), from: runLanguage)
+        return LayoutConverter.detectAlphabet(mapped) == runLanguage.opposite
     }
 
     /// Evaluates if the current buffer is a completed word and needs conversion.
     public func evaluateFullWord(buffer: String, currentLanguage _: Language) -> CorrectionDecision? {
+        // Tokens carrying punctuation are judged as a whole first: the run path
+        // splits on the punctuation, so it would convert only a fragment of
+        // `[jhjij` or `,tkrf` instead of the word the user actually typed (the
+        // shipped `[jhjij` → `[орошо` corruption). Pure-letter tokens fall
+        // straight through — the punctuated path admits nothing else.
+        if let decision = decisionForPunctuatedToken(in: buffer) {
+            return decision
+        }
         // Same mixed-alphabet guard as evaluate(): only the trailing run is the real word.
         // `minPrefixLength` (not a hardcoded 3) guards short words like "he"/"my".
+        // Still needed as the fallback: `hello,ghbdtn` has no faithful whole-token
+        // reading, and only the trailing run may convert there.
         if let (word, bufferLang) = candidateWord(from: buffer, minLength: minPrefixLength),
            let decision = decisionIfMistyped(word: word, bufferLang: bufferLang, fullWord: true)
         {
             return decision
         }
-        // Punctuation-attached words: `",fu"` or `"ghbdtn"` never reach the run path
-        // intact (the run splits on punctuation), so convert the whole token while
-        // checking dictionary membership on the stripped core.
-        return decisionForPunctuatedToken(in: buffer)
+        return nil
     }
 
     /// Token-aware full-word check for words wrapped in punctuation.
@@ -195,7 +230,7 @@ public final class Detector: @unchecked Sendable {
     ///   `,` is `б` in RU). Converts the whole token, checks the stripped result.
     /// - H2 (verbatim): the edges are real punctuation (`"ghbdtn,"` → `"привет,"`).
     ///   Converts only the core, re-attaches the edges untouched.
-    /// Pure-letter tokens are skipped — the run path above already handled them.
+    /// Pure-letter tokens are skipped — the run path below handles them.
     private func decisionForPunctuatedToken(in buffer: String) -> CorrectionDecision? {
         let token = LayoutConverter.trailingToken(of: buffer)
         guard !token.isEmpty else { return nil }
@@ -203,7 +238,14 @@ public final class Detector: @unchecked Sendable {
         // Shorter floor than the run path: dictionary membership on both sides is
         // the real guard here (EN words like `he` self-protect via `contains`).
         guard core.count >= 2 else { return nil }
-        guard !leading.isEmpty || !trailing.isEmpty else { return nil }
+        // Interior punctuation admits a token too: `б`, `ю`, `х`, `ъ`, `ё` sit on
+        // punctuation keys, so whole words like `работает` type with punctuation
+        // strictly inside the token (`hf,jnftn`). The run path can never see such
+        // a token whole — it splits there — so they must be judged on this path.
+        let hasInteriorPunctuation = core.unicodeScalars.contains {
+            LayoutConverter.alphabet(of: $0) == nil
+        }
+        guard !leading.isEmpty || !trailing.isEmpty || hasInteriorPunctuation else { return nil }
         // Same exclusion gate as the run path — same predicate, not a weaker one —
         // and on the extracted core rather than the raw token, so `"ghbdtn,"` is
         // blocked by excluding `"ghbdtn"` rather than the comma-attached token.
