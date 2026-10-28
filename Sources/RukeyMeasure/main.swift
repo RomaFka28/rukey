@@ -339,7 +339,8 @@ struct RukeyMeasureMain {
             )
         )
         guard let calc = undo.calculateUndo() else {
-            fatalError("Undo must be available right after a correction")
+            check(false, "Undo must be available right after a correction")
+            return
         }
         check(calc.backspacesNeeded == 3, "Undo must erase 3 chars, got \(calc.backspacesNeeded)")
         check(calc.textToRestore == "ghb", "Undo must restore ghb, got '\(calc.textToRestore)'")

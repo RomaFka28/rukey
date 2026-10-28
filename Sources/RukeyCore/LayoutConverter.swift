@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Language: String, Sendable, CaseIterable {
+public enum Language: String, Sendable {
     case english = "en"
     case russian = "ru"
 
@@ -37,7 +37,7 @@ public struct LayoutConverter: Sendable {
         return map
     }()
 
-    public init() {}
+    init() {}
 
     /// Validates internal mapping consistency.
     ///

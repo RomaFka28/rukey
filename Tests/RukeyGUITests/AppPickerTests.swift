@@ -3,10 +3,7 @@ import XCTest
 
 final class AppPickerTests: XCTestCase {
     private func makeApp(_ name: String, _ bundleID: String) -> InstalledApp {
-        InstalledApp(
-            id: bundleID,
-            name: name,
-            url: URL(fileURLWithPath: "/Applications/\(name).app"))
+        InstalledApp(id: bundleID, name: name)
     }
 
     func testSearchMatchesNameCaseInsensitively() {

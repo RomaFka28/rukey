@@ -48,10 +48,6 @@ public struct StatusMenuModel: Equatable {
     public let lastCorrection: CorrectionSummary?
     public let learningBanner: LearnedWordBanner?
     public let launchAtLogin: Bool
-    /// The live app-exclusion snapshot, carried so the owner hands over one
-    /// complete settings state; no row renders it yet.
-    public let excludedBundleIDs: [String]
-
     public init(
         permission: PermissionState,
         running: Bool,
@@ -59,8 +55,7 @@ public struct StatusMenuModel: Equatable {
         language: Language,
         lastCorrection: CorrectionSummary?,
         learningBanner: LearnedWordBanner?,
-        launchAtLogin: Bool,
-        excludedBundleIDs: [String]
+        launchAtLogin: Bool
     ) {
         self.permission = permission
         self.running = running
@@ -69,7 +64,6 @@ public struct StatusMenuModel: Equatable {
         self.lastCorrection = lastCorrection
         self.learningBanner = learningBanner
         self.launchAtLogin = launchAtLogin
-        self.excludedBundleIDs = excludedBundleIDs
     }
 
     /// The status row's text, in the exact strings of spec §8.1. A grant with a
@@ -123,7 +117,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// The alternate icon shown for a moment when a word is learned: the same
     /// bolt, outlined instead of filled, so the blink is unmistakable.
-    public static func flashImage() -> NSImage {
+    static func flashImage() -> NSImage {
         Icon.outlinedTemplateImage()
     }
 
@@ -154,8 +148,8 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         onOpenSettings: (() -> Void)? = nil,
         onOpenAccessibility: (() -> Void)? = nil,
         onOpenLog: (() -> Void)? = nil,
-        onToggleLaunchAtLogin: @escaping (Bool) -> Void = { _ in },
-        onRemoveLearnedWord: @escaping (String) -> Void = { _ in },
+        onToggleLaunchAtLogin: @escaping (Bool) -> Void,
+        onRemoveLearnedWord: @escaping (String) -> Void,
         onRefreshModel: (() -> Void)? = nil
     ) {
         self.onOpenSettings = onOpenSettings
@@ -343,13 +337,9 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     private func flashIcon() {
         statusItem.button?.image = Self.flashImage()
         flashTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: false) { [weak self] _ in
-            // Timers added to `RunLoop.main` fire on the main thread, same as
-            // the permission gate's poll; the isolation is real.
-            MainActor.assumeIsolated { self?.restoreIcon() }
+        flashTimer = Timer.scheduleOnMain(interval: 1.0) { [weak self] in
+            self?.restoreIcon()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        flashTimer = timer
     }
 
     private func restoreIcon() {

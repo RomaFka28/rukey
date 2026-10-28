@@ -109,11 +109,29 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func permissionStateChanged(_ newState: PermissionState) {
+        if newState == .denied {
+            // A revocation may have killed the tap mid-session: report
+            // honestly and tear the tap down so the next grant starts from
+            // a clean state instead of showing «Работает» over a dead tap.
+            tapRunning = false
+            engine?.tapManager.stop()
+        }
         if newState == .granted {
             buildEngineIfNeeded()
+            // The engine may already exist from an earlier grant: the tap
+            // still needs a start attempt of its own, otherwise a re-grant
+            // shows «Работает» over a dead tap.
+            if engine != nil, !tapRunning {
+                let started = engine?.tapManager.start() ?? false
+                tapRunning = started
+                if !started {
+                    LogBuffer.shared.log(
+                        "Не удалось запустить перехват клавиатуры. Проверьте права Accessibility.",
+                        level: .error)
+                }
+            }
         }
-        // A revocation repaints the status row too; the rebuild is cheap and
-        // idempotent, and the grant may be lost and regained over a session.
+        // A revocation repaints the status row too; the re-grant restarts the tap.
         refreshStatusModel()
     }
 
@@ -134,11 +152,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 notifyProvider: { MainActor.assumeIsolated { state.notifyOnEveryUndo } },
                 configWriter: { words in
                     // Re-read before mutating — the writer may not be the only editor.
-                    var current = RukeyConfig.load(
-                        excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-                    current.excludedWords = words.sorted()
-                    RukeyConfig.write(current, to: RukeyConfig.configFileURL)
-                    MainActor.assumeIsolated { state.excludedWords = current.excludedWords }
+                    RukeyConfig.update { $0.excludedWords = words.sorted() }
                 })
             // The hub's initialiser owns all five hooks; assigning any of them
             // by hand would break the one-owner-per-process rule.
@@ -270,8 +284,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             language: InputSourceManager.shared.effectiveLanguage(),
             lastCorrection: lastCorrection,
             learningBanner: learnedWordBanner,
-            launchAtLogin: state.launchAtLogin,
-            excludedBundleIDs: state.excludedBundleIDs.sorted())
+            launchAtLogin: state.launchAtLogin)
         statusItem?.update(model)
     }
 
@@ -285,12 +298,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             // for the word again — the same reason Task 4's removal clears
             // strikes.
             engine.strikeStore.removeAllKeys(for: word)
-            // Re-read before mutating — the writer may not be the only editor.
-            var current = RukeyConfig.load(
-                excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-            current.excludedWords = engine.wordFilter.words.sorted()
-            RukeyConfig.write(current, to: RukeyConfig.configFileURL)
-            state.excludedWords = current.excludedWords
+            // Persist through the single writer so the learning controller,
+            // the menu and the settings window never drop each other's writes.
+            RukeyConfig.update {
+                $0.excludedWords = engine.wordFilter.words.sorted()
+            }
         }
         refreshStatusModel()
     }

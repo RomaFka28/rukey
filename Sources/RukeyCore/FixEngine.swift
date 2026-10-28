@@ -10,7 +10,7 @@ public final class DefaultSyntheticEventSender: SyntheticEventSender {
     public static let shared = DefaultSyntheticEventSender()
     public static let magicEventUserData: Int64 = 0x52_554B_4559  // "RUKEY"
 
-    public init() {}
+    init() {}
 
     public func sendBackspace(count: Int) {
         guard count > 0 else { return }

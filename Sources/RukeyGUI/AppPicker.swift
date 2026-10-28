@@ -1,7 +1,7 @@
 import Foundation
 
 /// One installed application, as the applications tab sees it: the bundle
-/// identifier, a display name and the bundle's location on disk.
+/// identifier and a display name.
 ///
 /// Plain data on purpose: the picker's search is a pure function over an array
 /// of these, so the matching rules are testable without a disk or a window.
@@ -11,13 +11,10 @@ public struct InstalledApp: Identifiable, Hashable, Sendable {
     public let id: String
     /// `CFBundleDisplayName`, or the bundle's directory name when it has none.
     public let name: String
-    /// The `.app` bundle's location.
-    public let url: URL
 
-    public init(id: String, name: String, url: URL) {
+    public init(id: String, name: String) {
         self.id = id
         self.name = name
-        self.url = url
     }
 }
 
@@ -102,8 +99,7 @@ public final class AppPicker {
                     InstalledApp(
                         id: identifier,
                         name: displayName.flatMap { $0.isEmpty ? nil : $0 }
-                            ?? url.deletingPathExtension().lastPathComponent,
-                        url: url))
+                            ?? url.deletingPathExtension().lastPathComponent))
             }
         }
         return sortedByName(apps)

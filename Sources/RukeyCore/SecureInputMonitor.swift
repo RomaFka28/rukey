@@ -87,16 +87,23 @@ public final class SecureInputMonitor: @unchecked Sendable {
   }
 
   private func cachedFrontmostBundleID() -> String? {
-    return cacheLock.withLock {
-      let now = Date()
-      if now.timeIntervalSince(cachedAt) < Self.bundleCacheTTL, cachedAt != .distantPast {
-        return cachedBundleID
-      }
-      let fresh = frontmostBundleID()
-      cachedBundleID = fresh
-      cachedAt = now
-      return fresh
+    let now = Date()
+    // Serve from cache without holding the lock over the NSWorkspace IPC.
+    cacheLock.lock()
+    if now.timeIntervalSince(cachedAt) < Self.bundleCacheTTL, cachedAt != .distantPast {
+      let hit = cachedBundleID
+      cacheLock.unlock()
+      return hit
     }
+    cacheLock.unlock()
+    // The workspace call runs outside the lock so a slow accessibility
+    // query cannot serialize every keystroke on this lock.
+    let fresh = frontmostBundleID()
+    cacheLock.lock()
+    cachedBundleID = fresh
+    cachedAt = now
+    cacheLock.unlock()
+    return fresh
   }
 
   /// Pure decision function — unit-testable without NSWorkspace.

@@ -3,15 +3,15 @@ import AppKit
 /// What the Accessibility permission check last reported.
 ///
 /// `unknown` is the state before the first poll, so a consumer can tell
-/// "not asked yet" apart from "asked and refused". `needsPrompt` is declared
-/// for UI that wants to distinguish a refusal the user has not been shown yet
-/// — the poll itself only ever produces `granted`/`denied`.
+/// "not asked yet" apart from "asked and refused". The poll itself only ever
+/// produces `granted`/`denied` — there is no third "prompt pending" state,
+/// because the gate never prompts: it watches the grant the user opens
+/// manually.
 @MainActor
 public enum PermissionState: Equatable {
     case unknown
     case granted
     case denied
-    case needsPrompt
 }
 
 /// Watches the Accessibility grant without blocking or exiting the app.
@@ -48,16 +48,16 @@ public final class PermissionGate {
     /// immediately; the caller decides when the first check happens.
     public func start() {
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
-            // Timers added to `RunLoop.main` fire on the main thread; the
-            // probe reads main-actor state, so the isolation is real.
-            MainActor.assumeIsolated { self?.pollNow() }
+        // The probe reads main-actor state; `scheduleOnMain` guarantees every
+        // tick runs there.
+        timer = Timer.scheduleOnMain(interval: pollInterval) { [weak self] in
+            self?.pollNow()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
     }
 
-    public func stop() {
+    /// Test-only teardown: invalidates the poll while keeping the gate itself
+    /// usable for the next `start()`.
+    func stop() {
         timer?.invalidate()
         timer = nil
     }

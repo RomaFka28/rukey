@@ -31,8 +31,8 @@ public final class SettingsStore: ObservableObject {
         FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/LaunchAgents/com.roman.rukey.plist")
 
-    public let engine: RukeyEngine
-    public let state: SettingsState
+    let engine: RukeyEngine
+    let state: SettingsState
 
     /// Where the LaunchAgent plist is written. A stored property so the failure
     /// path is testable; the init parameter seeds it.
@@ -144,40 +144,55 @@ public final class SettingsStore: ObservableObject {
         set {
             let previous = state.launchAtLogin
             guard newValue != previous else { return }
-            if newValue {
-                do {
-                    try writeLaunchAgent()
-                } catch {
-                    fail(previous, "Не удалось зарегистрировать автозапуск: \(error.localizedDescription)")
-                    return
-                }
-                guard persist({ $0.launchAtLogin = true }) else {
-                    // The config file could not be written; undo the plist so
-                    // the settings file and the agent cannot disagree.
-                    try? FileManager.default.removeItem(at: launchAgentFileURLOverride)
-                    fail(previous, "Не удалось сохранить настройку автозапуска; регистрация отменена.")
-                    return
-                }
-                state.launchAtLogin = true
-            } else {
-                do {
-                    try removeLaunchAgent()
-                } catch {
-                    fail(previous, "Не удалось отключить автозапуск: \(error.localizedDescription)")
-                    return
-                }
-                guard persist({ $0.launchAtLogin = false }) else {
-                    // Put the plist back: the checkbox must keep matching the
-                    // file it could not update.
-                    try? writeLaunchAgent()
-                    fail(previous, "Не удалось сохранить настройку автозапуска; отключение отменено.")
-                    return
-                }
-                state.launchAtLogin = false
-            }
+            guard toggleAgent(newValue, previous: previous) else { return }
+            state.launchAtLogin = newValue
             lastError = nil
             objectWillChange.send()
         }
+    }
+
+    /// Registering and deregistering are mirror images: set or remove the
+    /// plist, persist the flag, and undo the plist when the config save
+    /// failed — in both directions the checkbox and the file must not
+    /// disagree. The exact failure strings stay distinct per direction.
+    /// - Returns: whether both the plist step and the config write succeeded;
+    ///   the failure path has already restored `previous` via `fail`.
+    @discardableResult
+    private func toggleAgent(_ on: Bool, previous: Bool) -> Bool {
+        do {
+            if on {
+                try writeLaunchAgent()
+            } else {
+                // Removing an entry that is not there is a success: the
+                // desired end state (no agent) already holds.
+                try removeLaunchAgent()
+            }
+        } catch {
+            fail(
+                previous,
+                on
+                    ? "Не удалось зарегистрировать автозапуск: \(error.localizedDescription)"
+                    : "Не удалось отключить автозапуск: \(error.localizedDescription)")
+            return false
+        }
+        guard persist({ $0.launchAtLogin = on }) else {
+            // The config file could not be written; undo the plist so the
+            // settings file and the agent cannot disagree. For "off" that
+            // means putting the plist back: the checkbox must keep matching
+            // the file it could not update.
+            if on {
+                try? FileManager.default.removeItem(at: launchAgentFileURLOverride)
+            } else {
+                try? writeLaunchAgent()
+            }
+            fail(
+                previous,
+                on
+                    ? "Не удалось сохранить настройку автозапуска; регистрация отменена."
+                    : "Не удалось сохранить настройку автозапуска; отключение отменено.")
+            return false
+        }
+        return true
     }
 
     /// The LaunchAgent plist: label, `RunAtLoad`, and the app bundle's fixed
@@ -251,13 +266,9 @@ public final class SettingsStore: ObservableObject {
     /// second and no view update.
     public func beginLogRefresh() {
         guard logRefreshTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            // Timers added to `RunLoop.main` fire on the main thread, same as
-            // the permission gate's poll; the isolation is real.
-            MainActor.assumeIsolated { self?.refreshLogIfChanged() }
+        logRefreshTimer = Timer.scheduleOnMain(interval: 1.0) { [weak self] in
+            self?.refreshLogIfChanged()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        logRefreshTimer = timer
         refreshLogIfChanged()
     }
 
@@ -284,10 +295,7 @@ public final class SettingsStore: ObservableObject {
     ///   already logged a `.warn` when it did not.
     @discardableResult
     private func persist(_ mutate: (inout RukeyConfig) -> Void) -> Bool {
-        var current = RukeyConfig.load(
-            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false,
-            configFileURL: configFileURL, logBuffer: logBuffer)
-        mutate(&current)
-        return RukeyConfig.write(current, to: configFileURL, logBuffer: logBuffer)
+        RukeyConfig.update(
+            atFileURL: configFileURL, logBuffer: logBuffer, apply: mutate)
     }
 }

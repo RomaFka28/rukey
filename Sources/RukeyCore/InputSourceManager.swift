@@ -50,7 +50,7 @@ public final class InputSourceManager: @unchecked Sendable {
     }
 
     /// Scans available keyboard input sources and caches English and Russian sources.
-    public func refreshInputSources() {
+    func refreshInputSources() {
         lock.lock()
         defer { lock.unlock() }
             cachedSources.removeAll()
@@ -69,11 +69,8 @@ public final class InputSourceManager: @unchecked Sendable {
             }
 
             for source in list {
-                guard let category = stringProperty(of: source, key: kTISPropertyInputSourceCategory)
-                else { continue }
-                guard category == (kTISCategoryKeyboardInputSource as String) else { continue }
-
-                // Check language tags
+                // The list was already category-filtered by
+                // `TISCreateInputSourceList`; no per-source re-check needed.
                 let langs = stringArrayProperty(of: source, key: kTISPropertyInputSourceLanguages)
                 for lang in langs {
                     if lang.hasPrefix("en") && cachedSources[.english] == nil {
@@ -156,7 +153,7 @@ public final class InputSourceManager: @unchecked Sendable {
     /// Language Rukey believes is currently active.
     ///
     /// `TISCopyCurrentKeyboardInputSource` can lag behind a programmatic switch, so right
-    /// after `apply`/`toggleLayout` we trust what we tried to apply for a short grace window.
+    /// after `apply` we trust what we tried to apply for a short grace window.
     /// After that, the real system value always wins and refreshes our cache — otherwise the
     /// cache drifts from reality and Option-toggle starts fighting the user's manual layout.
     public func effectiveLanguage() -> Language {
@@ -176,14 +173,6 @@ public final class InputSourceManager: @unchecked Sendable {
         return system
     }
 
-    /// Flips the active layout and returns the language now in effect.
-    @discardableResult
-    public func toggleLayout() -> Language {
-        let target = effectiveLanguage().opposite
-        apply(language: target)
-        return target
-    }
-
     /// Selects the input source for the requested language.
     @discardableResult
     public func select(language: Language) -> Bool {
@@ -197,11 +186,7 @@ public final class InputSourceManager: @unchecked Sendable {
             return false
         }
 
-        guard let source = sourceToSelect else {
-            return false
-        }
-
-        let status = TISSelectInputSource(source)
+        let status = TISSelectInputSource(sourceToSelect!)
         return status == noErr
     }
 }

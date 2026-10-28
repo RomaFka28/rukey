@@ -45,7 +45,7 @@ public final class WordFilter: @unchecked Sendable {
         lock.withLock { normalisedWords }
     }
 
-    public var isEmpty: Bool {
+    var isEmpty: Bool {
         lock.withLock { normalisedWords.isEmpty }
     }
 

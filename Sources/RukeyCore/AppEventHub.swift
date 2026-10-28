@@ -25,8 +25,8 @@ public final class AppEventHub: ObservableObject {
     @Published public private(set) var lastCorrection: CorrectionDecision?
     @Published public private(set) var lastUndo: UndoNotice?
     @Published public private(set) var lastLearned: LearnedNotice?
-    @Published public private(set) var lastLayoutToggle: LayoutToggleNotice?
-    @Published public private(set) var lastIgnoredReason: String?
+    @Published private(set) var lastLayoutToggle: LayoutToggleNotice?
+    @Published private(set) var lastIgnoredReason: String?
 
     /// Subscribes the hub to the tap manager's four callbacks and to the
     /// controller's notice hook. The undo notice itself arrives through the
@@ -86,7 +86,7 @@ public struct LearnedNotice: Equatable, Sendable {
 }
 
 /// The languages the option toggle switched between.
-public struct LayoutToggleNotice: Equatable, Sendable {
+struct LayoutToggleNotice: Equatable, Sendable {
     public let from: Language
     public let to: Language
 }

@@ -9,3 +9,10 @@ dist/
 # regenerating them requires network access.
 # macOS Finder noise: never commit.
 .DS_Store
+
+# Local dev/review artifacts from the superpowers workflow (never commit).
+.superpowers/
+
+# Editor and assistant-local settings.
+.vscode/
+.claude/

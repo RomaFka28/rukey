@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LastCorrectionState: Sendable {
+struct LastCorrectionState: Sendable {
     public let originalText: String
     public let convertedText: String
     public let originalLanguage: Language
@@ -23,7 +23,7 @@ public struct LastCorrectionState: Sendable {
 }
 
 public final class RukeyUndoManager: @unchecked Sendable {
-    public static let maxTailLength = 64
+    static let maxTailLength = 64
 
     private var lastState: LastCorrectionState?
     private var lastUndoneState: (original: String, converted: String)?
@@ -84,7 +84,7 @@ public final class RukeyUndoManager: @unchecked Sendable {
         public let textToRestore: String
         public let originalLanguage: Language
 
-        public init(backspacesNeeded: Int, textToRestore: String, originalLanguage: Language) {
+        init(backspacesNeeded: Int, textToRestore: String, originalLanguage: Language) {
             self.backspacesNeeded = backspacesNeeded
             self.textToRestore = textToRestore
             self.originalLanguage = originalLanguage

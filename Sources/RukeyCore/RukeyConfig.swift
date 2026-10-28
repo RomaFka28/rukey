@@ -12,7 +12,7 @@ public struct RukeyConfig: Sendable {
   public var notifyOnEveryUndo: Bool
   public var showCorrectionFlash: Bool
   public var minPrefixLength: Int
-  public var verbose: Bool
+  var verbose: Bool
 
   public init(
     excludedWords: [String] = [],
@@ -136,6 +136,34 @@ public struct RukeyConfig: Sendable {
       )
       return false
     }
+  }
+
+  /// Re-reads the config file fresh, applies `mutate` to the fresh copy, and writes
+  /// the whole struct back with the one writer. Every settings editor (GUI tabs,
+  /// the learning controller) goes through this single read-modify-write so no
+  /// editor can drop another's just-written fields.
+  /// - Parameters:
+  ///   - excludeTerminalsFlag: CLI launch-time flag passthrough, forwarded to
+  ///     `load` so the CLI keeps its flag semantics on re-read.
+  ///   - extraBundleIDs: CLI launch-time bundle-ID feed, same passthrough.
+  ///   - url: the config file; defaults to the shared `configFileURL`.
+  ///   - logBuffer: destination for load/write warnings.
+  ///   - mutate: the field changes to merge into the fresh copy.
+  /// - Returns: whether the file write succeeded; `write` has already logged
+  ///   a `.warn` when it did not.
+  @discardableResult
+  public static func update(
+    excludeTerminalsFlag: Bool = false,
+    extraBundleIDs: [String] = [],
+    atFileURL url: URL = RukeyConfig.configFileURL,
+    logBuffer: LogBuffer = LogBuffer.shared,
+    apply mutate: (inout RukeyConfig) -> Void
+  ) -> Bool {
+    var current = RukeyConfig.load(
+      excludeTerminalsFlag: excludeTerminalsFlag, extraBundleIDs: extraBundleIDs,
+      verbose: false, configFileURL: url, logBuffer: logBuffer)
+    mutate(&current)
+    return RukeyConfig.write(current, to: url, logBuffer: logBuffer)
   }
 
   /// Every key is optional so a config file written by an older build still decodes.

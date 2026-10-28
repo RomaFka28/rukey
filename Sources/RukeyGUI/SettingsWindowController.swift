@@ -87,7 +87,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
                 self?.persistExcludedBundleIDs(ids)
             },
             terminalsWriter: { [weak self] enabled in
-                self?.persistExcludeTerminals(enabled)
+                self?.store.excludeTerminals = enabled
             })
         // The tab-selection model; `show(selecting:)` writes it before the
         // window is ordered front, and the `TabView` binds to it.
@@ -118,11 +118,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// the config and the whole struct goes to the one writer. The live
     /// settings copy is updated in the same call.
     private func persistExcludedWords(_ words: Set<String>) {
-        var current = RukeyConfig.load(
-            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-        current.excludedWords = words.sorted()
-        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
-        state.excludedWords = current.excludedWords
+        RukeyConfig.update { $0.excludedWords = words.sorted() }
     }
 
     /// The applications tab's writer, with the same re-read-merge-write
@@ -131,24 +127,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// next keystroke — so this only persists the full set and mirrors the
     /// fresh file into the live settings copy.
     private func persistExcludedBundleIDs(_ ids: Set<String>) {
-        var current = RukeyConfig.load(
-            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-        current.excludedBundleIDs = ids
-        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
-        state.excludedBundleIDs = current.excludedBundleIDs
-    }
-
-    /// The terminal checkbox's writer: same path, one flag. The monitor itself
-    /// is set by the model before this runs. The store is republished at the
-    /// end too: the general tab binds through it, and without a change signal
-    /// its body would keep showing the pre-toggle value.
-    private func persistExcludeTerminals(_ enabled: Bool) {
-        var current = RukeyConfig.load(
-            excludeTerminalsFlag: false, extraBundleIDs: [], verbose: false)
-        current.excludeTerminals = enabled
-        RukeyConfig.write(current, to: RukeyConfig.configFileURL)
-        state.excludeTerminals = current.excludeTerminals
-        store.objectWillChange.send()
+        RukeyConfig.update { $0.excludedBundleIDs = ids }
     }
 
     // MARK: - NSWindowDelegate

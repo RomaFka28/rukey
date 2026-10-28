@@ -33,7 +33,6 @@ public struct RukeyEngine {
     public let strikeStore: StrikeStore
     public let secureMonitor: SecureInputMonitor
     public let tapManager: EventTapManager
-    public let config: RukeyConfig
 
     /// - Throws: `RukeyEngineError.emptyDictionary(resource:)` when a shipped
     ///   trie loads with zero words — English is checked first so the entry
@@ -44,8 +43,6 @@ public struct RukeyEngine {
         customDictionaryFileURL: URL = CustomDictionary.defaultFileURL,
         strikeStoreFileURL: URL = StrikeStore.defaultFileURL
     ) throws {
-        self.config = config
-
         let wordFilter = WordFilter(words: Set(config.excludedWords))
         self.wordFilter = wordFilter
 

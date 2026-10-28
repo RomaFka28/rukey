@@ -20,7 +20,7 @@ private let correctionFlashTextLimit = 60
 @MainActor
 public final class CorrectionFlash {
     /// How long the panel stays on screen.
-    public static let duration: TimeInterval = 1.5
+    static let duration: TimeInterval = 1.5
 
     /// `«original» → «converted»`, truncated to 60 characters with a trailing
     /// `…` when it does not fit; the whole text is kept when it does.
@@ -87,13 +87,9 @@ public final class CorrectionFlash {
         positionPanel()
         panel.orderFrontRegardless()
         hideTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.duration, repeats: false) { [weak self] _ in
-            // Timers added to `RunLoop.main` fire on the main thread, same as
-            // the permission gate's poll; the isolation is real.
-            MainActor.assumeIsolated { self?.hide() }
+        hideTimer = Timer.scheduleOnMain(interval: Self.duration) { [weak self] in
+            self?.hide()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        hideTimer = timer
     }
 
     /// Hides the panel and cancels a pending auto-hide.

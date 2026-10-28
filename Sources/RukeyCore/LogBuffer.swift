@@ -2,7 +2,7 @@ import Foundation
 
 /// A single timestamped log record.
 public struct LogLine: Identifiable, Sendable {
-    public enum Level: String, Sendable, CaseIterable {
+    public enum Level: String, Sendable {
         case debug, info, warn, error
     }
 
@@ -69,7 +69,7 @@ public final class LogBuffer: @unchecked Sendable {
         }
     }
 
-    public func clear() {
+    func clear() {
         lock.withLock {
             for index in slots.indices {
                 slots[index] = nil

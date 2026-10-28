@@ -15,8 +15,6 @@ public final class SettingsState {
     public var showCorrectionFlash: Bool
     public var excludeTerminals: Bool
     public var launchAtLogin: Bool
-    public var excludedWords: [String]
-    public var excludedBundleIDs: Set<String>
 
     public init(config: RukeyConfig) {
         minPrefixLength = config.minPrefixLength
@@ -25,7 +23,5 @@ public final class SettingsState {
         showCorrectionFlash = config.showCorrectionFlash
         excludeTerminals = config.excludeTerminals
         launchAtLogin = config.launchAtLogin
-        excludedWords = config.excludedWords
-        excludedBundleIDs = config.excludedBundleIDs
     }
 }

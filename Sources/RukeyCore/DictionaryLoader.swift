@@ -11,7 +11,8 @@ public final class DictionaryLoader: Sendable {
     }
 
     /// Loads a Trie from a resource text file containing newline-delimited words.
-    /// Throwing variant — prefer it over the silent fail-open version below.
+    /// The throwing variant reports misses through `LogBuffer`; the silent
+    /// variant below returns an empty trie and is what production callers use.
     public func loadTrieThrowing(fromResource name: String, withExtension ext: String = "txt") throws -> Trie {
         guard let url = Bundle.module.url(forResource: name, withExtension: ext) else {
             throw LoadError.resourceNotFound("\(name).\(ext)")
@@ -21,31 +22,25 @@ public final class DictionaryLoader: Sendable {
         return trie
     }
 
-    /// Loads a Trie from a resource text file; returns an empty Trie when missing.
-    /// Kept for backward compatibility — logs the miss so startup failures are visible.
+    /// Loads a Trie from a resource text file; returns an empty Trie when missing,
+    /// logging the miss so startup failures are visible.
     public func loadTrie(fromResource name: String, withExtension ext: String = "txt") -> Trie {
         do {
             return try loadTrieThrowing(fromResource: name, withExtension: ext)
         } catch {
-            print("[Rukey] Dictionary '\(name).\(ext)' not found, using empty trie (\(error))")
+            LogBuffer.shared.log(
+                "[Rukey] Dictionary '\(name).\(ext)' not found, using empty trie (\(error))",
+                level: .warn)
             return Trie()
         }
     }
 
-    public func loadWordsThrowing(from url: URL, into trie: Trie) throws {
+    private func loadWordsThrowing(from url: URL, into trie: Trie) throws {
         let content: String
         do {
             content = try String(contentsOf: url, encoding: .utf8)
         } catch {
             throw LoadError.unreadable(url, error)
-        }
-        loadWords(content: content, into: trie)
-    }
-
-    /// Loads words from a local file URL into the specified Trie.
-    public func loadWords(from url: URL, into trie: Trie) {
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            return
         }
         loadWords(content: content, into: trie)
     }
@@ -58,14 +53,5 @@ public final class DictionaryLoader: Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         trie.insert(contentsOf: words)
-    }
-
-    /// Loads a Trie directly from an array of strings.
-    public func loadTrie(from words: [String]) -> Trie {
-        let trie = Trie()
-        for word in words {
-            trie.insert(word)
-        }
-        return trie
     }
 }

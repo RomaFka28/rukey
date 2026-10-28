@@ -3,12 +3,12 @@ import CoreGraphics
 import Foundation
 
 public final class EventTapManager: @unchecked Sendable {
-  public let detector: Detector
-  public let fixEngine: FixEngine
+  let detector: Detector
+  let fixEngine: FixEngine
   public let undoManager: RukeyUndoManager
-  public let secureMonitor: SecureInputMonitor
+  let secureMonitor: SecureInputMonitor
   public let inputSourceManager: InputSourceManager
-  public let bufferManager: BufferManager
+  let bufferManager: BufferManager
   public var logger = RukeyLogger(isVerbose: false)
 
   private var eventTap: CFMachPort?
@@ -251,7 +251,7 @@ public final class EventTapManager: @unchecked Sendable {
   // MARK: - Core event handling
 
   /// Core event handling logic for intercepted keystrokes.
-  public func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<
+  func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<
     CGEvent
   >? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {

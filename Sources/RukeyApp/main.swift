@@ -34,6 +34,9 @@ struct RukeyMain {
     if args[i] == "--exclude-bundle", i + 1 < args.count {
       extraBundleIDs.append(args[i + 1])
       i += 2
+    } else if args[i] == "--exclude-bundle" {
+      print("⚠️ [Rukey] Flag --exclude-bundle requires a value; ignoring.")
+      i += 1
     } else {
       i += 1
     }

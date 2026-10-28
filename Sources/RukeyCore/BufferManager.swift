@@ -17,17 +17,6 @@ public final class BufferManager: @unchecked Sendable {
         return lock.withLock { buffer }
     }
 
-    public var isEmpty: Bool {
-        return lock.withLock { buffer.isEmpty }
-    }
-
-    public func append(_ char: Character) {
-        lock.withLock {
-            guard buffer.count < Self.maxLength else { return }
-            buffer.append(char)
-        }
-    }
-
     public func append(contentsOf text: String) {
         lock.withLock {
             for char in text {

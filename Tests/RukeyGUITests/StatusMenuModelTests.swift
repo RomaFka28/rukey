@@ -7,7 +7,7 @@ final class StatusMenuModelTests: XCTestCase {
         let model = StatusMenuModel(
             permission: .granted, running: true, secureInputActive: false,
             language: .russian, lastCorrection: nil, learningBanner: nil,
-            launchAtLogin: false, excludedBundleIDs: [])
+            launchAtLogin: false)
         XCTAssertEqual(model.statusTitle, "Работает")
     }
 
@@ -15,7 +15,7 @@ final class StatusMenuModelTests: XCTestCase {
         let model = StatusMenuModel(
             permission: .denied, running: false, secureInputActive: false,
             language: .russian, lastCorrection: nil, learningBanner: nil,
-            launchAtLogin: false, excludedBundleIDs: [])
+            launchAtLogin: false)
         XCTAssertEqual(model.statusTitle, "Нет прав Accessibility")
     }
 
@@ -23,7 +23,7 @@ final class StatusMenuModelTests: XCTestCase {
         let model = StatusMenuModel(
             permission: .granted, running: false, secureInputActive: false,
             language: .russian, lastCorrection: nil, learningBanner: nil,
-            launchAtLogin: false, excludedBundleIDs: [])
+            launchAtLogin: false)
         XCTAssertEqual(model.statusTitle, "Не запущено")
     }
 
@@ -31,7 +31,7 @@ final class StatusMenuModelTests: XCTestCase {
         let model = StatusMenuModel(
             permission: .granted, running: true, secureInputActive: true,
             language: .russian, lastCorrection: nil, learningBanner: nil,
-            launchAtLogin: false, excludedBundleIDs: [])
+            launchAtLogin: false)
         XCTAssertEqual(model.statusTitle, "Приостановлено: защищённый ввод")
     }
 
@@ -41,7 +41,7 @@ final class StatusMenuModelTests: XCTestCase {
             permission: .granted, running: true, secureInputActive: false,
             language: .russian,
             lastCorrection: .init(original: long, converted: long),
-            learningBanner: nil, launchAtLogin: false, excludedBundleIDs: [])
+            learningBanner: nil, launchAtLogin: false)
         XCTAssertTrue(model.lastCorrectionTitle!.count <= StatusItemController.menuTitleLimit + 3)
         XCTAssertTrue(model.lastCorrectionTitle!.contains("…"))
     }
@@ -52,7 +52,7 @@ final class StatusMenuModelTests: XCTestCase {
             language: .russian,
             lastCorrection: .init(original: "ghb", converted: "при"),
             learningBanner: .init(prefix: "ghb", converted: "при"),
-            launchAtLogin: false, excludedBundleIDs: [])
+            launchAtLogin: false)
         XCTAssertNotNil(model.learningBannerTitle)
         XCTAssertEqual(model.learningBannerTitle, "Запомнено: ghb больше не станет при")
     }

@@ -27,8 +27,8 @@ public final class Detector: @unchecked Sendable {
     // `minTargetCompletions` are immutable after `init`, `minPrefixLength` is
     // guarded by its own `NSLock`, and `wordFilter`/`customDictionary` are
     // independent `@unchecked Sendable` types that guard their own state.
-    public let enTrie: Trie
-    public let ruTrie: Trie
+    let enTrie: Trie
+    let ruTrie: Trie
 
     // Mutable at runtime so the settings window can change it without
     // rebuilding the detector: a rebuild means re-arming the tap and dropping
@@ -45,15 +45,15 @@ public final class Detector: @unchecked Sendable {
     /// Filters junk-backed prefixes (`ghu` exists only via `ghul`): typos like
     /// `прг` no longer flip the layout mid-word. Boundary (full-word) path is
     /// unaffected — exact matches always convert.
-    public let minTargetCompletions: Int
+    let minTargetCompletions: Int
     /// Words the user never wants converted. Consulted by every path below, so an
     /// excluded word is blocked from its first keystroke rather than corrected.
-    public let wordFilter: WordFilter
+    let wordFilter: WordFilter
     /// Words the user taught the daemon, which count as real even though neither
     /// shipped trie knows them. Consulted as an extra membership test on both
     /// sides of every conversion: it lets `pfjprplpfjp` become the taught
     /// `заозкздзаоз`, and it keeps that taught word from being flipped back.
-    public let customDictionary: CustomDictionary
+    let customDictionary: CustomDictionary
 
     public init(
         enTrie: Trie,
