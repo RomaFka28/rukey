@@ -4,10 +4,11 @@
 #
 # Packaging steps:
 #   1. swift build -c release
-#   2. assemble dist/Rukey.app/Contents/{MacOS,Resources}
+#   2. assemble dist/Rukey.app/Contents/{MacOS,Resources,Frameworks}
 #   3. embed the dictionaries so Bundle.module resolves inside the .app
-#   4. sign with the "Rukey Local Signing" identity (hardened runtime)
-#   5. print the resulting bundle path
+#   4. sign nested Sparkle code before signing the application
+#   5. verify the resulting bundle
+#   6. print the resulting bundle path
 #
 # PRODUCT_NAME selects the executable product that becomes the app's main
 # binary. The console `rukey` product stays CLI-only and is never packaged.
@@ -42,6 +43,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$ROOT_DIR/Sources/RukeyGUI/Resources/Info.plist"
 ICON_FILE="$ROOT_DIR/Sources/RukeyGUI/Resources/Rukey.icns"
+FRAMEWORKS_DIR="$APP_DIR/Contents/Frameworks"
 
 cd "$ROOT_DIR"
 
@@ -73,6 +75,22 @@ if [ ! -f "$ICON_FILE" ]; then
   exit 1
 fi
 
+SPARKLE_FRAMEWORK=""
+for candidate in \
+  "$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" \
+  "$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64/Sparkle.framework" \
+  "$BIN_DIR/Sparkle.framework"
+do
+  if [ -d "$candidate" ]; then
+    SPARKLE_FRAMEWORK="$candidate"
+    break
+  fi
+done
+if [ -z "$SPARKLE_FRAMEWORK" ]; then
+  echo "error: Sparkle.framework was not found in SwiftPM artifacts." >&2
+  exit 1
+fi
+
 if [ -n "$EXPLICIT_IDENTITY" ]; then
   IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
     | awk -v requested="$EXPLICIT_IDENTITY" \
@@ -97,22 +115,68 @@ fi
 
 echo "Assembling $APP_DIR..." >&2
 rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$FRAMEWORKS_DIR"
 
 install -m 755 "$BIN_DIR/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$INFO_PLIST" "$APP_DIR/Contents/Info.plist"
 cp "$ICON_FILE" "$APP_DIR/Contents/Resources/"
 cp -R "$BIN_DIR/$RESOURCE_BUNDLE_NAME" "$APP_DIR/Contents/Resources/"
+ditto "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/Sparkle.framework"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" \
   "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" \
   "$APP_DIR/Contents/Info.plist"
 
+if ! otool -l "$APP_DIR/Contents/MacOS/$APP_NAME" | grep -A2 LC_RPATH \
+  | grep -q '@executable_path/../Frameworks'; then
+  install_name_tool -add_rpath '@executable_path/../Frameworks' \
+    "$APP_DIR/Contents/MacOS/$APP_NAME"
+fi
+
 echo "Signing with '$IDENTITY_NAME' ($IDENTITY)..." >&2
+codesign_args=(--force --sign "$IDENTITY" --options runtime)
 if [ "$CODESIGN_TIMESTAMP" = "yes" ]; then
-  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$APP_DIR"
+  codesign_args+=(--timestamp)
 else
-  codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$APP_DIR"
+  codesign_args+=(--timestamp=none)
+fi
+
+sign_code() {
+  codesign "${codesign_args[@]}" "$1"
+}
+
+# Sparkle contains executable XPC services and an updater app. Sign those
+# components before the framework and the host application; --deep is not
+# used because it can mask an incorrectly signed nested component.
+while IFS= read -r executable; do
+  sign_code "$executable"
+done < <(find "$FRAMEWORKS_DIR/Sparkle.framework/XPCServices" \
+  -type f -perm -111 -print 2>/dev/null)
+while IFS= read -r xpc_service; do
+  sign_code "$xpc_service"
+done < <(find "$FRAMEWORKS_DIR/Sparkle.framework/XPCServices" \
+  -type d -name '*.xpc' -print 2>/dev/null)
+while IFS= read -r executable; do
+  sign_code "$executable"
+done < <(find "$FRAMEWORKS_DIR/Sparkle.framework/Updater.app/Contents" \
+  -type f -perm -111 -print 2>/dev/null)
+sign_code "$FRAMEWORKS_DIR/Sparkle.framework/Updater.app"
+sign_code "$FRAMEWORKS_DIR/Sparkle.framework/Autoupdate"
+sign_code "$FRAMEWORKS_DIR/Sparkle.framework"
+sign_code "$APP_DIR"
+
+while IFS= read -r dependency; do
+  relative_path="${dependency#@rpath/}"
+  if [ ! -e "$FRAMEWORKS_DIR/$relative_path" ]; then
+    echo "error: unresolved @rpath dependency: $dependency" >&2
+    exit 1
+  fi
+done < <(otool -L "$APP_DIR/Contents/MacOS/$APP_NAME" \
+  | awk '$1 ~ /^@rpath\// { print $1 }')
+
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+if [ "${RELEASE_VALIDATION:-no}" = "yes" ]; then
+  spctl --assess --type execute --verbose=2 "$APP_DIR"
 fi
 
 printf '%s\n' "$APP_DIR"

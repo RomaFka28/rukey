@@ -41,9 +41,20 @@ jobs:
           APP_VERSION: ${{ github.ref_name }}
           SIGNING_IDENTITY: ${{ secrets.RUKEY_DEVELOPER_ID_SIGNING_IDENTITY }}
           CODESIGN_TIMESTAMP: yes
+          RELEASE_VALIDATION: yes
         run: |
           VERSION="${APP_VERSION#v}"
           APP_VERSION="$VERSION" bash tools/package-app.sh
+
+      - name: Smoke-test application before notarization
+        run: |
+          APP_BINARY="dist/Rukey.app/Contents/MacOS/Rukey"
+          test -x "$APP_BINARY"
+          "$APP_BINARY" &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+          sleep 5
+          kill -0 "$APP_PID"
 
       - name: Notarize application
         env:
