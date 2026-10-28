@@ -1,31 +1,31 @@
 <p align="center">
-  <img src="assets/rukey-logo.svg" alt="Rukey" width="720">
+  <img src="assets/rukey-logo.svg" alt="Rukey logo" width="720">
 </p>
 
 <p align="center">
-  <strong>Умное переключение раскладки для macOS</strong><br>
-  Исправляет текст сразу во время набора — без пробела и Enter.
+  <a href="https://github.com/RomaFka28/rukey/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RomaFka28/rukey?style=flat-square&label=download"></a>
+  <a href="https://github.com/RomaFka28/rukey/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/RomaFka28/rukey/release.yml?style=flat-square&label=release"></a>
+  <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/license-Apache--2.0-38bdf8?style=flat-square"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/RomaFka28/rukey/releases/latest"><img src="https://img.shields.io/github/v/release/RomaFka28/rukey?style=flat-square&label=скачать"></a>
-  <a href="https://github.com/RomaFka28/rukey/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/RomaFka28/rukey/release.yml?style=flat-square&label=релиз"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-38bdf8?style=flat-square"></a>
-  <a href="https://github.com/RomaFka28/rukey"><img src="https://img.shields.io/github/stars/RomaFka28/rukey?style=flat-square"></a>
-</p>
+# Rukey
 
-# Rukey (рукей) ⚡
+Автоматическое переключение раскладки клавиатуры на лету на macOS. GUI-версия работает из строки меню (`Rukey.app`), а тот же движок доступен как консольный демон `rukey`.
 
-Автоматическое переключение раскладки клавиатуры на лету на macOS (без ожидания пробела или Enter). GUI-версия — приложение в строке меню (`Rukey.app`); тот же движок доступен и как консольный демон `rukey`.
+Примеры исправления:
+- `руддщ` → `hello`
+- `ghbdtn` → `привет`
+- `ghbvth` → `пример`
 
-Исправляет опечатки вида:
-- `руддщ` ➔ `hello`
-- `ghbdtn` ➔ `привет`
-- `ghbvth` ➔ `пример`
+## Быстрая установка
+
+1. Скачайте `Rukey-*.dmg` из [последнего релиза](https://github.com/RomaFka28/rukey/releases/latest).
+2. Откройте архив и перетащите `Rukey.app` в **Applications**.
+3. Запустите приложение и дайте доступ в **System Settings → Privacy & Security → Accessibility**.
+
+DMG нужен для обычной установки. Для автоматических обновлений используется отдельный подписанный ZIP и Sparkle appcast.
 
 ---
-
-## Установка
 
 ### Для обычного использования
 
