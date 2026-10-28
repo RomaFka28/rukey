@@ -2,7 +2,7 @@
 #
 # package-app.sh — build, assemble and sign dist/Rukey.app.
 #
-# Steps (docs/superpowers/plans/2026-10-14-rukey-gui-shell.md, GUI Task 1):
+# Packaging steps:
 #   1. swift build -c release
 #   2. assemble dist/Rukey.app/Contents/{MacOS,Resources}
 #   3. embed the dictionaries so Bundle.module resolves inside the .app
@@ -10,8 +10,7 @@
 #   5. print the resulting bundle path
 #
 # PRODUCT_NAME selects the executable product that becomes the app's main
-# binary: the GUI target added by GUI plan Task 2. The console `rukey`
-# product stays CLI-only and is never packaged.
+# binary. The console `rukey` product stays CLI-only and is never packaged.
 #
 # Resource bundle: Package.swift declares `.process("Resources")` for the
 # RukeyCore target. SwiftPM turns that into the compiled bundle

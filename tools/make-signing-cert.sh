@@ -10,27 +10,25 @@
 # Accessibility (TCC) grant survive app rebuilds: TCC stores the leaf
 # certificate hash in the app's code requirement.
 #
-# Deviations from docs/superpowers/plans/2026-10-14-rukey-gui-shell.md:
-#
-#   1. The plan's openssl command is extended with -addext extensions
+# The openssl command uses -addext extensions
 #      (basicConstraints=critical,CA:FALSE, keyUsage=critical,digitalSignature,
 #      extendedKeyUsage=critical,codeSigning). Measured on macOS: without the
 #      codeSigning EKU the certificate never appears in
-#      `security find-identity -p codesigning`, so the plan's own verification
-#      step ("print the SHA-1 hash find-identity reports") could not pass.
+#      `security find-identity -p codesigning`, so the verification step that
+#      prints the reported SHA-1 hash can pass.
 #
-#   2. Trust is added in the *user* domain
+# Trust is added in the *user* domain
 #      (`security add-trusted-cert -r trustRoot -k login.keychain-db`), not the
-#      admin domain with `-d` as written in the plan. `-d` writes to the
+#      admin domain with `-d`. `-d` writes to the
 #      system-wide admin trust store and needs administrator authorization;
 #      the user-domain setting needs no admin rights and is sufficient for both
-#      `codesign` and the plan's `security find-identity -v` check — the effect
+#      `codesign` and the `security find-identity -v` check — the effect
 #      for this workflow is identical. If macOS refuses the trust change from
 #      a non-interactive session, run this script from a regular Terminal.app
 #      window (where the authorization prompt can be approved); nothing is
 #      recreated by re-running.
 #
-#   3. The unencrypted private key PEM in /tmp is deleted after the import; the
+# The unencrypted private key PEM in /tmp is deleted after the import; the
 #      key lives in the login keychain (imported with a /usr/bin/codesign read
 #      ACL, so codesign never prompts). The certificate PEM is kept only for
 #      the trust step and is re-exported from the keychain when missing.
