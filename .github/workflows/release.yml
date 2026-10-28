@@ -47,6 +47,13 @@ jobs:
       - name: Create update archive
         run: ditto -c -k --sequesterRsrc --keepParent dist/Rukey.app "Rukey-${GITHUB_REF_NAME#v}.zip"
 
+      - name: Create macOS installer
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${APP_VERSION#v}"
+          APP_VERSION="$VERSION" bash tools/create-dmg.sh
+
       - name: Require configured Sparkle public key
         run: |
           ! grep -q "REPLACE_WITH_SPARKLE_PUBLIC_KEY" \
@@ -83,6 +90,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "Rukey-${GITHUB_REF_NAME#v}.zip" \
+            "dist/Rukey-${GITHUB_REF_NAME#v}.dmg" \
             "dist/appcast/appcast.xml" \
             --title "Rukey ${GITHUB_REF_NAME#v}" \
             --generate-notes
