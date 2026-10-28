@@ -173,7 +173,15 @@ public final class EventTapManager: @unchecked Sendable {
     {
       let from = LayoutConverter.detectAlphabet(bufferManager.currentBuffer) ?? inputSourceManager.effectiveLanguage()
       let to = from.opposite
-      inputSourceManager.apply(language: to)
+      guard inputSourceManager.apply(language: to) else {
+        logger.error(
+          "Не удалось переключить раскладку \(from.rawValue) -> \(to.rawValue).")
+        onOptionIgnored?("input_source_switch_failed")
+        bufferManager.reset()
+        undoManager.clear()
+        return
+      }
+      logger.info("Переключена раскладка \(from.rawValue) -> \(to.rawValue)")
       bufferManager.reset()
       undoManager.clear()
       onOptionToggle?(from, to)
@@ -213,6 +221,10 @@ public final class EventTapManager: @unchecked Sendable {
         // Tab/newline move the cursor — undo across them corrupts text.
         undoManager.clear()
       }
+      logger.info(
+        "[Auto-Correct] '\(decision.originalText)' -> '\(decision.convertedText)' "
+          + "(\(decision.sourceLanguage.rawValue) -> \(decision.targetLanguage.rawValue), "
+          + "rule: \(decision.triggerRule))")
       onCorrection?(decision)
       bufferManager.reset()
       return ws == " "
@@ -225,6 +237,10 @@ public final class EventTapManager: @unchecked Sendable {
     )
     // Cursor moved — no undo across these keys.
     undoManager.clear()
+    logger.info(
+      "[Auto-Correct] '\(decision.originalText)' -> '\(decision.convertedText)' "
+        + "(\(decision.sourceLanguage.rawValue) -> \(decision.targetLanguage.rawValue), "
+        + "rule: \(decision.triggerRule))")
     onCorrection?(decision)
     bufferManager.reset()
     return false
@@ -373,6 +389,10 @@ public final class EventTapManager: @unchecked Sendable {
 
       undoManager.recordCorrection(decision)
       bufferManager.replaceBuffer(with: untouchedPrefix + decision.convertedText)
+      logger.info(
+        "[Auto-Correct] '\(decision.originalText)' -> '\(decision.convertedText)' "
+          + "(\(decision.sourceLanguage.rawValue) -> \(decision.targetLanguage.rawValue), "
+          + "rule: \(decision.triggerRule))")
       onCorrection?(decision)
 
       // Swallow the triggering key event because convertedText already includes it

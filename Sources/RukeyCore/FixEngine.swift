@@ -38,6 +38,9 @@ public final class DefaultSyntheticEventSender: SyntheticEventSender {
         let source = CGEventSource(stateID: .hidSystemState)
         let utf16Array = Array(string.utf16)
 
+        // Unicode text belongs on keyDown only. Some applications interpret a
+        // Unicode payload on keyUp as another insertion, which duplicates every
+        // correction (`hello hello`, `привет привет`).
         if let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
             down.setIntegerValueField(.eventSourceUserData, value: Self.magicEventUserData)
             down.keyboardSetUnicodeString(stringLength: utf16Array.count, unicodeString: utf16Array)
@@ -45,7 +48,6 @@ public final class DefaultSyntheticEventSender: SyntheticEventSender {
         }
         if let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
             up.setIntegerValueField(.eventSourceUserData, value: Self.magicEventUserData)
-            up.keyboardSetUnicodeString(stringLength: utf16Array.count, unicodeString: utf16Array)
             up.post(tap: .cghidEventTap)
         }
     }
