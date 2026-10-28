@@ -1,6 +1,6 @@
 import Foundation
 import RukeyCore
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// `UNUserNotificationCenter` wrapper: permission, and the two notification
 /// kinds the engine produces.
