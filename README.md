@@ -23,25 +23,17 @@
 2. Откройте архив и перетащите `Rukey.app` в **Applications**.
 3. Запустите приложение и дайте доступ в **System Settings → Privacy & Security → Accessibility**.
 
-DMG нужен для обычной установки. Для автоматических обновлений используется отдельный подписанный ZIP и Sparkle appcast.
+DMG нужен для обычной установки. Для автоматических обновлений используется
+отдельный подписанный ZIP и Sparkle appcast.
 
----
+> Если macOS показывает «Apple could not verify Rukey.app», это старый релиз,
+> собранный до включения Apple notarization. Не используйте его для публичной
+> установки; новый релиз будет опубликован после настройки Developer ID secrets.
 
-### Для обычного использования
-
-1. Откройте [последний релиз](https://github.com/RomaFka28/rukey/releases/latest).
-2. Скачайте `Rukey-*.dmg`.
-3. Откройте DMG и перетащите **Rukey** в папку **Applications**.
-4. Запустите приложение и выдайте ему доступ в **System Settings → Privacy & Security → Accessibility**.
-
-DMG — удобный установщик для первого запуска. Sparkle использует отдельный
-подписанный ZIP внутри релиза, поэтому последующие обновления устанавливаются
-автоматически и безопасно.
-
-> **Подпись macOS:** опубликованный релиз собирается с подписью приложения и
-> проверкой Sparkle EdDSA. Для снятия предупреждения Gatekeeper на чужих Mac
-> нужен отдельный Apple Developer ID Application certificate и notarization.
-> Самоподписанный сертификат проекта предназначен для локальной разработки и CI.
+> **Подпись macOS:** релиз должен быть подписан сертификатом **Developer ID
+> Application** и пройти Apple notarization. Только после этого macOS не
+> показывает предупреждение «Apple could not verify…». Sparkle EdDSA отдельно
+> защищает канал автообновлений и не заменяет Apple notarization.
 
 ### Для разработчиков
 
@@ -52,6 +44,36 @@ open dist/Rukey-1.0.dmg
 ```
 
 Исходный код распространяется по [Apache License 2.0](LICENSE).
+
+### Настройка Apple-подписи для релизов
+
+Для релизов без предупреждения Gatekeeper нужен платный Apple Developer Program,
+сертификат **Developer ID Application** и app-specific password. Сам Sparkle-ключ
+не заменяет Apple-подпись.
+
+Сначала экспортируйте сертификат Developer ID из Keychain Access в `.p12`.
+Затем в Terminal выполните:
+
+```bash
+base64 < DeveloperID.p12 | tr -d '\n' | \
+  gh secret set RUKEY_DEVELOPER_ID_CERTIFICATE_BASE64 --repo RomaFka28/rukey
+gh secret set RUKEY_DEVELOPER_ID_CERTIFICATE_PASSWORD --repo RomaFka28/rukey
+gh secret set RUKEY_DEVELOPER_ID_SIGNING_IDENTITY --repo RomaFka28/rukey
+gh secret set RUKEY_APPLE_ID --repo RomaFka28/rukey
+gh secret set RUKEY_APPLE_TEAM_ID --repo RomaFka28/rukey
+gh secret set RUKEY_APPLE_APP_SPECIFIC_PASSWORD --repo RomaFka28/rukey
+```
+
+Для `RUKEY_DEVELOPER_ID_SIGNING_IDENTITY` нужно указать полное имя сертификата,
+например `Developer ID Application: Roman Example (TEAM123456)`. App-specific
+password создаётся на [appleid.apple.com](https://appleid.apple.com/) в разделе
+**Sign-In and Security → App-Specific Passwords**. После добавления secrets
+создайте новый tag — workflow подпишет приложение, notarize-ит `.app` и `.dmg`,
+прикрепит ticket Apple и проверит Gatekeeper через `spctl`.
+
+Старые secrets `RUKEY_SIGNING_CERTIFICATE_BASE64` и
+`RUKEY_SIGNING_CERTIFICATE_PASSWORD` относятся к локальному self-signed
+сертификату и для публичных релизов больше не используются.
 
 ---
 

@@ -16,8 +16,8 @@ jobs:
 
       - name: Import Apple signing certificate
         env:
-          SIGNING_CERTIFICATE_BASE64: ${{ secrets.RUKEY_SIGNING_CERTIFICATE_BASE64 }}
-          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.RUKEY_SIGNING_CERTIFICATE_PASSWORD }}
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.RUKEY_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.RUKEY_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
         run: |
           test -n "$SIGNING_CERTIFICATE_BASE64"
           test -n "$SIGNING_CERTIFICATE_PASSWORD"
@@ -39,10 +39,29 @@ jobs:
       - name: Build signed application
         env:
           APP_VERSION: ${{ github.ref_name }}
-          SIGNING_IDENTITY: Rukey Local Signing
+          SIGNING_IDENTITY: ${{ secrets.RUKEY_DEVELOPER_ID_SIGNING_IDENTITY }}
+          CODESIGN_TIMESTAMP: yes
         run: |
           VERSION="${APP_VERSION#v}"
           APP_VERSION="$VERSION" bash tools/package-app.sh
+
+      - name: Notarize application
+        env:
+          APPLE_ID: ${{ secrets.RUKEY_APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.RUKEY_APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.RUKEY_APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          test -n "$APPLE_ID"
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APPLE_APP_SPECIFIC_PASSWORD"
+          xcrun notarytool submit dist/Rukey.app \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple dist/Rukey.app
+          xcrun stapler validate dist/Rukey.app
+          spctl --assess --type execute --verbose=2 dist/Rukey.app
 
       - name: Create update archive
         run: ditto -c -k --sequesterRsrc --keepParent dist/Rukey.app "Rukey-${GITHUB_REF_NAME#v}.zip"
@@ -53,6 +72,20 @@ jobs:
         run: |
           VERSION="${APP_VERSION#v}"
           APP_VERSION="$VERSION" bash tools/create-dmg.sh
+
+      - name: Notarize installer
+        env:
+          APPLE_ID: ${{ secrets.RUKEY_APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.RUKEY_APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.RUKEY_APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool submit "dist/Rukey-${GITHUB_REF_NAME#v}.dmg" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "dist/Rukey-${GITHUB_REF_NAME#v}.dmg"
+          xcrun stapler validate "dist/Rukey-${GITHUB_REF_NAME#v}.dmg"
 
       - name: Require configured Sparkle public key
         run: |

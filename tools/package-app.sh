@@ -35,6 +35,7 @@ RESOURCE_BUNDLE_NAME="Rukey_RukeyCore.bundle"
 IDENTITY_NAME="${SIGNING_IDENTITY:-Rukey Local Signing}"
 EXPLICIT_IDENTITY="${SIGNING_IDENTITY:-}"
 APP_VERSION="${APP_VERSION:-1.0}"
+CODESIGN_TIMESTAMP="${CODESIGN_TIMESTAMP:-no}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -73,7 +74,9 @@ if [ ! -f "$ICON_FILE" ]; then
 fi
 
 if [ -n "$EXPLICIT_IDENTITY" ]; then
-  IDENTITY="$EXPLICIT_IDENTITY"
+  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v requested="$EXPLICIT_IDENTITY" \
+      'index($0, requested) { print $2; exit }')"
 else
   IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
     | awk -v name="\"$IDENTITY_NAME\"" 'index($0, name) { print $2; exit }')"
@@ -106,6 +109,10 @@ cp -R "$BIN_DIR/$RESOURCE_BUNDLE_NAME" "$APP_DIR/Contents/Resources/"
   "$APP_DIR/Contents/Info.plist"
 
 echo "Signing with '$IDENTITY_NAME' ($IDENTITY)..." >&2
-codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$APP_DIR"
+if [ "$CODESIGN_TIMESTAMP" = "yes" ]; then
+  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$APP_DIR"
+else
+  codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$APP_DIR"
+fi
 
 printf '%s\n' "$APP_DIR"
