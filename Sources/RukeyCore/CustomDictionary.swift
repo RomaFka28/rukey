@@ -108,12 +108,7 @@ public final class CustomDictionary: @unchecked Sendable {
     /// are missing.
     private func persist(_ payload: FileShape) {
         do {
-            // `~/.config/rukey` does not exist on a fresh install.
-            try FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .sortedKeys
-            try encoder.encode(payload).write(to: fileURL, options: .atomic)
+            try JSONPersistence.write(payload, to: fileURL)
         } catch {
             logBuffer.log(
                 "Could not save taught words to \(fileURL.path): "
@@ -128,7 +123,7 @@ public final class CustomDictionary: @unchecked Sendable {
     private static func read(from url: URL, into logBuffer: LogBuffer) -> Set<String> {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         do {
-            let shape = try JSONDecoder().decode(FileShape.self, from: Data(contentsOf: url))
+            let shape = try JSONPersistence.read(FileShape.self, from: url)
             return normalise(Set(shape.words ?? []))
         } catch {
             logBuffer.log(

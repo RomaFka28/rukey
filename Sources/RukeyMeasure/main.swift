@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import RukeyCore
 
 /// Verification primitive for the suite. SwiftPM compiles `assert()` out of release builds, which
@@ -25,6 +26,8 @@ struct RukeyMeasureMain {
         testUndoManager()
         testSecureInput()
         testBenchmark()
+        benchmarkComponents()
+        benchmarkMemory()
         testLayoutToggleMidWord()
 
         print("\n🎉 ALL TESTS AND BENCHMARKS PASSED SUCCESSFULLY!")
@@ -213,6 +216,7 @@ struct RukeyMeasureMain {
             let lang: Language = (i % 2 == 0) ? .russian : .english
             _ = detector.evaluate(buffer: word, currentLanguage: lang)
         }
+
         let end = DispatchTime.now()
 
         let nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds
@@ -228,12 +232,52 @@ struct RukeyMeasureMain {
             "Latency must be well below 50 microseconds for real-time responsiveness")
     }
 
+    static func benchmarkComponents() {
+        print("\n[7/9] Benchmarking component costs...")
+        let iterations = 50_000
+        let start = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<iterations { _ = LayoutConverter.toRussian("ghbdtn") }
+        let layoutNanos = DispatchTime.now().uptimeNanoseconds - start
+        let loader = DictionaryLoader.shared
+        let detector = Detector(
+            enTrie: loader.loadTrie(fromResource: "words_en"),
+            ruTrie: loader.loadTrie(fromResource: "words_ru"), minPrefixLength: 3)
+        let detectorStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<iterations {
+            _ = detector.evaluate(buffer: "ghbd", currentLanguage: .english)
+        }
+        let detectorNanos = DispatchTime.now().uptimeNanoseconds - detectorStart
+        print(String(format: "  ✓ Layout conversion: %.3f µs/op",
+                     Double(layoutNanos) / Double(iterations) / 1_000.0))
+        print(String(format: "  ✓ Detector evaluation: %.3f µs/op",
+                     Double(detectorNanos) / Double(iterations) / 1_000.0))
+        check(layoutNanos > 0 && detectorNanos > 0)
+    }
+
+    static func benchmarkMemory() {
+        print("\n[8/9] Measuring dictionary memory footprint...")
+        let before = residentMemory()
+        let loader = DictionaryLoader.shared
+        let en = loader.loadTrie(fromResource: "words_en")
+        let ru = loader.loadTrie(fromResource: "words_ru")
+        let after = residentMemory()
+        let delta = max(0, after - before)
+        print("  ✓ Loaded \(en.wordCount + ru.wordCount) words; RSS delta: \(delta / 1024) KiB")
+        check(en.wordCount > 0 && ru.wordCount > 0)
+    }
+
+    private static func residentMemory() -> UInt64 {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+        return UInt64(usage.ru_maxrss)
+    }
+
     /// Replays keystroke sequences through the real Detector and BufferManager using the same
     /// arithmetic as EventTapManager (erase decision.originalText.count, keep the untouched
     /// prefix). Verifies what actually ends up on screen — including layout switches typed
     /// in the middle of a word, which is where mixed-alphabet buffers appear.
     static func testLayoutToggleMidWord() {
-        print("\n[7/7] Replaying keystroke scenarios (on-the-fly & word-boundary)...")
+        print("\n[9/9] Replaying keystroke scenarios (on-the-fly & word-boundary)...")
         let loader = DictionaryLoader.shared
         let detector = Detector(
             enTrie: loader.loadTrie(fromResource: "words_en"),

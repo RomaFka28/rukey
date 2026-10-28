@@ -11,6 +11,9 @@ public final class Trie: @unchecked Sendable {
         var children: [Unicode.Scalar: Node] = [:]
     }
 
+    // Inserts and reads share the same lock because the public API permits
+    // incremental mutation. Removing the read lock would make a concurrent
+    // insert race with Dictionary storage and invalidate @unchecked Sendable.
     private let root: Node = Node()
     private(set) public var wordCount: Int = 0
     private let lock = NSLock()

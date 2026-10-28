@@ -109,6 +109,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        settingsStore?.flushPendingWrites()
         engine?.tapManager.stop()
         return .terminateNow
     }

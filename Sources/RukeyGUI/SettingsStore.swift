@@ -45,6 +45,9 @@ public final class SettingsStore: ObservableObject {
     private let configFileURL: URL
     private let logBuffer: LogBuffer
     private var showOnlyErrorsStorage = false
+    private var pendingConfig: RukeyConfig?
+    private var pendingWriteTask: Task<Void, Never>?
+    private let writeDebounceNanoseconds: UInt64 = 150_000_000
 
     /// The visible-log poll. `LogBuffer` deliberately has no notification API,
     /// so the Журнал tab asks the store to watch while it is on screen.
@@ -175,7 +178,7 @@ public final class SettingsStore: ObservableObject {
                     : "Не удалось отключить автозапуск: \(error.localizedDescription)")
             return false
         }
-        guard persist({ $0.launchAtLogin = on }) else {
+        guard persistImmediately({ $0.launchAtLogin = on }) else {
             // The config file could not be written; undo the plist so the
             // settings file and the agent cannot disagree. For "off" that
             // means putting the plist back: the checkbox must keep matching
@@ -311,7 +314,43 @@ public final class SettingsStore: ObservableObject {
     ///   already logged a `.warn` when it did not.
     @discardableResult
     private func persist(_ mutate: (inout RukeyConfig) -> Void) -> Bool {
-        RukeyConfig.update(
+        if pendingConfig == nil {
+            pendingConfig = RukeyConfig.load(
+                excludeTerminalsFlag: false, extraBundleIDs: [],
+                verbose: false, configFileURL: configFileURL, logBuffer: logBuffer)
+        }
+        mutate(&pendingConfig!)
+        schedulePendingWrite()
+        return true
+    }
+
+    private func schedulePendingWrite() {
+        pendingWriteTask?.cancel()
+        pendingWriteTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: self?.writeDebounceNanoseconds ?? 0)
+            guard !Task.isCancelled else { return }
+            self?.flushPendingWrites()
+        }
+    }
+
+    /// Flushes a coalesced settings burst. Callers that need a durable result
+    /// (for example the LaunchAgent rollback path) use the immediate variant.
+    @discardableResult
+    public func flushPendingWrites() -> Bool {
+        pendingWriteTask?.cancel()
+        pendingWriteTask = nil
+        guard let config = pendingConfig else { return true }
+        guard RukeyConfig.write(config, to: configFileURL, logBuffer: logBuffer) else {
+            return false
+        }
+        pendingConfig = nil
+        return true
+    }
+
+    @discardableResult
+    private func persistImmediately(_ mutate: (inout RukeyConfig) -> Void) -> Bool {
+        _ = flushPendingWrites()
+        return RukeyConfig.update(
             atFileURL: configFileURL, logBuffer: logBuffer, apply: mutate)
     }
 }

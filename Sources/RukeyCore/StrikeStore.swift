@@ -87,13 +87,7 @@ public final class StrikeStore: @unchecked Sendable {
     /// missing.
     private func persist() {
         do {
-            // `~/.config/rukey` does not exist on a fresh install.
-            try FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .sortedKeys
-            try encoder.encode(FileShape(strikes: strikesByKey)).write(
-                to: fileURL, options: .atomic)
+            try JSONPersistence.write(FileShape(strikes: strikesByKey), to: fileURL)
         } catch {
             logBuffer.log(
                 "Could not save undo counts to \(fileURL.path): "
@@ -108,7 +102,7 @@ public final class StrikeStore: @unchecked Sendable {
     private static func read(from url: URL, into logBuffer: LogBuffer) -> [String: Int] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         do {
-            return try JSONDecoder().decode(FileShape.self, from: Data(contentsOf: url)).strikes
+            return try JSONPersistence.read(FileShape.self, from: url).strikes
         } catch {
             logBuffer.log(
                 "Could not read undo counts from \(url.path): "

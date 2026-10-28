@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
   <title id="title">Rukey</title>
-  <desc id="desc">Rukey keyboard layout switcher logo</desc>
+  <desc id="desc">Rukey lightning logo</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#111827"/>
@@ -18,8 +18,7 @@
   <g transform="translate(82 82)">
     <rect x="10" y="10" width="236" height="236" rx="54" fill="url(#accent)"/>
     <g clip-path="url(#icon-clip)" fill="#082f49">
-      <path d="M58 76h124v34H58zm0 58h124v34H58zm0 58h78v34H58z"/>
-      <path d="M174 190l38 38-38 38-13-13 25-25-25-25z"/>
+      <path d="M150 28L76 136h49l-20 92 76-116h-50z"/>
     </g>
   </g>
   <text x="400" y="214" fill="#f8fafc" font-family="Helvetica Neue,Arial,sans-serif" font-size="132" font-weight="700" letter-spacing="-5">Rukey</text>

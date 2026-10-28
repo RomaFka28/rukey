@@ -86,71 +86,36 @@ public final class Detector: @unchecked Sendable {
         // gate covers both callers (on-the-fly `evaluate` and boundary
         // `evaluateFullWord`), which pass the identical `word`.
         guard !wordFilter.isPrefixOfExcluded(word) else { return nil }
-        if bufferLang == .russian {
-            let converted = LayoutConverter.toEnglish(word)
-            // Both sides widen with the taught words. `isCurrentValid` widening is
-            // what stops a taught word being flipped back into Latin;
-            // `isConvertedValid` widening is what makes the Latin typing of a taught
-            // word convert at all. The latter can only ever *enable* a conversion,
-            // never block one, so it carries none of the risk the former does.
-            let isCurrentValid = fullWord
-                ? ruTrie.contains(word) || customDictionary.contains(word)
-                : ruTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
-            // One lookup, reused by the on-the-fly arm of `isConvertedValid` and the
-            // junk-gate waiver. Apart, the two uses could ask the same question twice
-            // in one decision and could read different snapshots of the taught words;
-            // together it is one lookup on every on-the-fly decision. The
-            // `fullWord ? false` arm keeps the boundary path from gaining a lookup it
-            // never had.
-            let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
-            let isConvertedValid = fullWord
-                ? enTrie.contains(converted) || customDictionary.contains(converted)
-                : enTrie.hasPrefix(converted) || taughtTarget
-            if !isCurrentValid && isConvertedValid {
-                // On-the-fly only: demand a well-backed target prefix, otherwise a
-                // typo + one junk dictionary entry flips the layout (see `ghul`).
-                // The bar is waived for a taught word: the user taught it, so it is
-                // by definition real — which is what the bar exists to establish.
-                if !fullWord,
-                    !taughtTarget,
-                    enTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
-                {
-                    return nil
-                }
-                return CorrectionDecision(
-                    originalText: word,
-                    convertedText: converted,
-                    sourceLanguage: .russian,
-                    targetLanguage: .english,
-                    triggerRule: fullWord ? "full_word_ru_to_en" : "ru_invalid_prefix_en_valid"
-                )
+        let sourceTrie = bufferLang == .russian ? ruTrie : enTrie
+        let targetTrie = bufferLang == .russian ? enTrie : ruTrie
+        let converted = bufferLang == .russian
+            ? LayoutConverter.toEnglish(word)
+            : LayoutConverter.toRussian(word)
+        let isCurrentValid = fullWord
+            ? sourceTrie.contains(word) || customDictionary.contains(word)
+            : sourceTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
+        let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
+        let isConvertedValid = fullWord
+            ? targetTrie.contains(converted) || customDictionary.contains(converted)
+            : targetTrie.hasPrefix(converted) || taughtTarget
+        if !isCurrentValid && isConvertedValid {
+            if !fullWord,
+                !taughtTarget,
+                targetTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
+            {
+                return nil
             }
-        } else {
-            let converted = LayoutConverter.toRussian(word)
-            let isCurrentValid = fullWord
-                ? enTrie.contains(word) || customDictionary.contains(word)
-                : enTrie.hasPrefix(word) || customDictionary.isPrefixOfKnown(word)
-            // Same hoist as the Russian branch: one lookup for both the
-            // `isConvertedValid` arm and the junk-gate waiver.
-            let taughtTarget = fullWord ? false : customDictionary.isPrefixOfKnown(converted)
-            let isConvertedValid = fullWord
-                ? ruTrie.contains(converted) || customDictionary.contains(converted)
-                : ruTrie.hasPrefix(converted) || taughtTarget
-            if !isCurrentValid && isConvertedValid {
-                if !fullWord,
-                    !taughtTarget,
-                    ruTrie.countCompletions(of: converted, limit: minTargetCompletions) < minTargetCompletions
-                {
-                    return nil
-                }
-                return CorrectionDecision(
-                    originalText: word,
-                    convertedText: converted,
-                    sourceLanguage: .english,
-                    targetLanguage: .russian,
-                    triggerRule: fullWord ? "full_word_en_to_ru" : "en_invalid_prefix_ru_valid"
-                )
-            }
+            let sourceName = bufferLang == .russian ? "ru" : "en"
+            let targetName = bufferLang == .russian ? "en" : "ru"
+            return CorrectionDecision(
+                originalText: word,
+                convertedText: converted,
+                sourceLanguage: bufferLang,
+                targetLanguage: bufferLang.opposite,
+                triggerRule: fullWord
+                    ? "full_word_\(sourceName)_to_\(targetName)"
+                    : "\(sourceName)_invalid_prefix_\(targetName)_valid"
+            )
         }
         return nil
     }

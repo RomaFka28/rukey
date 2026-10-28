@@ -120,13 +120,7 @@ public struct RukeyConfig: Sendable {
       minPrefixLength: config.minPrefixLength
     )
     do {
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-      let data = try encoder.encode(shape)
-      // `~/.config/rukey` does not exist on a fresh install.
-      try FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try data.write(to: url, options: .atomic)
+      try JSONPersistence.write(shape, to: url, prettyPrinted: true)
       return true
     } catch {
       // Same shape as `readFile`'s warning: the path and the underlying reason.
@@ -181,7 +175,7 @@ public struct RukeyConfig: Sendable {
   private static func readFile(at url: URL, logBuffer: LogBuffer) -> FileShape? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     do {
-      return try JSONDecoder().decode(FileShape.self, from: Data(contentsOf: url))
+      return try JSONPersistence.read(FileShape.self, from: url)
     } catch {
       // The old code swallowed this and silently fell back to defaults; report it
       // so a user who mistyped their config learns why their settings are ignored.
