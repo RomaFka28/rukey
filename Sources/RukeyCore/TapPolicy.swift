@@ -2,7 +2,7 @@ import CoreGraphics
 
 /// Pure decisions for the global event tap.
 ///
-/// The tap callback itself is not reachable from a unit test, so the three
+/// The tap callback itself is not reachable from a unit test, so the four
 /// decisions it makes live here as values; `EventTapManager` keeps only the
 /// wiring and the Cocoa-free logic stays testable.
 public enum TapPolicy {
@@ -19,6 +19,13 @@ public enum TapPolicy {
   /// restore text in the wrong place. Clicks must disarm it.
   public static func isUndoResettingEvent(_ type: CGEventType) -> Bool {
     type == .leftMouseDown || type == .rightMouseDown
+  }
+
+  /// The system disables a tap when its callback is temporarily unresponsive.
+  /// Re-enabling it starts a new input session, rather than continuing state
+  /// captured before the interruption.
+  public static func isTapReenableEvent(_ type: CGEventType) -> Bool {
+    type == .tapDisabledByTimeout || type == .tapDisabledByUserInput
   }
 
   /// An Option tap normally toggles the layout, but while Secure Input is

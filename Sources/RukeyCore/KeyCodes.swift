@@ -8,8 +8,13 @@ public enum KeyCode {
     public static let leftOption: Int64 = 58
     public static let rightOption: Int64 = 61
 
-    /// Keys that end the current word (space, enter, tab, escape, arrows).
-    public static let wordBoundaries: Set<Int64> = [36, 48, 49, 53, 123, 124, 125, 126]
+    /// Keys that end the current word (space, enter, tab, escape, and cursor
+    /// movement/navigation keys).
+    public static let wordBoundaries: Set<Int64> = [
+        36, 48, 49, 53, // return, tab, space, escape
+        115, 116, 119, 121, // home, page up, end, page down
+        123, 124, 125, 126 // left, right, down, up
+    ]
 }
 
 /// Minimal logger to replace scattered `print` calls in the hot keystroke path.

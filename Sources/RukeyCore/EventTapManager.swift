@@ -270,15 +270,21 @@ public final class EventTapManager: @unchecked Sendable {
   func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<
     CGEvent
   >? {
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+    if TapPolicy.isTapReenableEvent(type) {
       if let tap = eventTap {
         CGEvent.tapEnable(tap: tap, enable: true)
       }
+      bufferManager.reset()
+      undoManager.clear()
+      optionPressPending = false
+      optionUsedInCombination = false
+      logger.warn("Восстановлен event tap после \(type == .tapDisabledByTimeout ? "тайм-аута" : "ввода пользователя"); состояние ввода сброшено")
       return pass(event)
     }
-    // A click moves the caret, so a pending undo would restore text at the
-    // wrong place: the click must disarm it. Same boundary as Escape/Enter.
+    // A click moves the caret, so pending input state would apply at the wrong
+    // place: the click starts a fresh word and disarms undo.
     if TapPolicy.isUndoResettingEvent(type) {
+      bufferManager.reset()
       undoManager.clear()
       return pass(event)
     }

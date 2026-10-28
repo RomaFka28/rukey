@@ -30,6 +30,18 @@ final class EventTapPolicyTests: XCTestCase {
         XCTAssertFalse(TapPolicy.isUndoResettingEvent(.scrollWheel))
     }
 
+    func testTapDisableEventsRequestReenableAndReset() {
+        XCTAssertTrue(TapPolicy.isTapReenableEvent(.tapDisabledByTimeout))
+        XCTAssertTrue(TapPolicy.isTapReenableEvent(.tapDisabledByUserInput))
+        XCTAssertFalse(TapPolicy.isTapReenableEvent(.keyDown))
+    }
+
+    func testNavigationKeysAreWordBoundaries() {
+        for keyCode in [115, 116, 119, 121, 123, 124, 125, 126] {
+            XCTAssertTrue(KeyCode.wordBoundaries.contains(Int64(keyCode)))
+        }
+    }
+
     func testLayoutToggleIsRefusedUnderSecureInput() {
         XCTAssertFalse(TapPolicy.shouldToggleLayoutOnOptionTap(isSecureInputActive: true))
     }
