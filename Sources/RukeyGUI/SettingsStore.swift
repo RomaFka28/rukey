@@ -181,9 +181,25 @@ public final class SettingsStore: ObservableObject {
             // means putting the plist back: the checkbox must keep matching
             // the file it could not update.
             if on {
-                try? FileManager.default.removeItem(at: launchAgentFileURLOverride)
+                do {
+                    try FileManager.default.removeItem(at: launchAgentFileURLOverride)
+                } catch {
+                    logBuffer.log(
+                        "Не удалось откатить регистрацию автозапуска: "
+                            + "\(error.localizedDescription)",
+                        level: .error
+                    )
+                }
             } else {
-                try? writeLaunchAgent()
+                do {
+                    try writeLaunchAgent()
+                } catch {
+                    logBuffer.log(
+                        "Не удалось восстановить регистрацию автозапуска: "
+                            + "\(error.localizedDescription)",
+                        level: .error
+                    )
+                }
             }
             fail(
                 previous,

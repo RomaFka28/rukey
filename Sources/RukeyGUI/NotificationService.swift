@@ -1,4 +1,5 @@
 import Foundation
+import RukeyCore
 import UserNotifications
 
 /// `UNUserNotificationCenter` wrapper: permission, and the two notification
@@ -16,8 +17,8 @@ import UserNotifications
 /// drift apart. The learned notice is always attempted.
 ///
 /// An unauthorised (or not-yet-authorised) centre is not an error: the public
-/// methods check `isAuthorized` and return quietly, and `add` failures are
-/// swallowed.
+/// methods check `isAuthorized` and return quietly. Operational failures are
+/// logged without interrupting the typing engine.
 ///
 /// **Construction hazard:** `UNUserNotificationCenter.current()` aborts a
 /// process that is not a real bundle ("bundleProxyForCurrentProcess is nil").
@@ -38,10 +39,19 @@ public final class NotificationService {
     }
 
     /// Asks for `.alert` and `.sound` and records the answer. A refused prompt
-    /// is not an error — every method returns quietly.
+    /// is not an error; an actual request failure is logged and leaves the
+    /// service unauthorised.
     public func requestAuthorization() async {
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        isAuthorized = granted
+        do {
+            isAuthorized = try await center.requestAuthorization(options: [.alert, .sound])
+        } catch {
+            isAuthorized = false
+            LogBuffer.shared.log(
+                "Не удалось запросить разрешение на уведомления: "
+                    + "\(error.localizedDescription)",
+                level: .warn
+            )
+        }
     }
 
     /// `«prefix» → «converted» (count/threshold)` — the same text as the
@@ -65,7 +75,7 @@ public final class NotificationService {
 
     /// One immediate notification, one unique identifier so consecutive
     /// notices cannot replace each other. A centre that refuses the request
-    /// simply does not deliver; it must not surface as an error.
+    /// is logged but does not interrupt the typing engine.
     private func deliver(body: String) async {
         let content = UNMutableNotificationContent()
         content.title = "Rukey"
@@ -73,6 +83,13 @@ public final class NotificationService {
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: UUID().uuidString, content: content, trigger: nil)
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+        } catch {
+            LogBuffer.shared.log(
+                "Не удалось показать уведомление: \(error.localizedDescription)",
+                level: .warn
+            )
+        }
     }
 }

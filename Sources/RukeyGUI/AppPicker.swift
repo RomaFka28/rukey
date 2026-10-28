@@ -1,4 +1,5 @@
 import Foundation
+import RukeyCore
 
 /// One installed application, as the applications tab sees it: the bundle
 /// identifier and a display name.
@@ -81,10 +82,18 @@ public final class AppPicker {
         var seen = Set<String>()
         var apps: [InstalledApp] = []
         for path in paths {
-            let entries =
-                (try? fileManager.contentsOfDirectory(
+            let entries: [URL]
+            do {
+                entries = try fileManager.contentsOfDirectory(
                     at: path, includingPropertiesForKeys: nil,
-                    options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants])) ?? []
+                    options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants])
+            } catch {
+                LogBuffer.shared.log(
+                    "Не удалось просканировать \(path.path): \(error.localizedDescription)",
+                    level: .warn
+                )
+                continue
+            }
             for url in entries where url.pathExtension == "app" {
                 guard let bundle = Bundle(url: url),
                     let identifier = bundle.bundleIdentifier,
