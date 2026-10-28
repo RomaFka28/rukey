@@ -38,6 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$ROOT_DIR/Sources/RukeyGUI/Resources/Info.plist"
+ICON_FILE="$ROOT_DIR/Sources/RukeyGUI/Resources/Rukey.icns"
 
 cd "$ROOT_DIR"
 
@@ -64,6 +65,11 @@ if [ ! -f "$BIN_DIR/$PRODUCT_NAME" ]; then
   exit 1
 fi
 
+if [ ! -f "$ICON_FILE" ]; then
+  echo "error: application icon is missing: $ICON_FILE" >&2
+  exit 1
+fi
+
 IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
   | awk -v name="\"$IDENTITY_NAME\"" 'index($0, name) { print $2; exit }')"
 if [ -z "$IDENTITY" ]; then
@@ -86,6 +92,7 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 install -m 755 "$BIN_DIR/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$INFO_PLIST" "$APP_DIR/Contents/Info.plist"
+cp "$ICON_FILE" "$APP_DIR/Contents/Resources/"
 cp -R "$BIN_DIR/$RESOURCE_BUNDLE_NAME" "$APP_DIR/Contents/Resources/"
 
 echo "Signing with '$IDENTITY_NAME' ($IDENTITY)..." >&2

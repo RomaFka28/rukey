@@ -10,6 +10,10 @@
 	<string>Rukey</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>Rukey.icns</string>
+	<key>CFBundleIconName</key>
+	<string>Rukey</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
