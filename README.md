@@ -23,17 +23,13 @@
 2. Откройте архив и перетащите `Rukey.app` в **Applications**.
 3. Запустите приложение и дайте доступ в **System Settings → Privacy & Security → Accessibility**.
 
-DMG нужен для обычной установки. Для автоматических обновлений используется
-отдельный подписанный ZIP и Sparkle appcast.
+DMG предназначен для обычной установки. Sparkle проверяет подпись обновлений
+через GitHub Releases.
 
-> Если macOS показывает «Apple could not verify Rukey.app», это старый релиз,
-> собранный до включения Apple notarization. Не используйте его для публичной
-> установки; новый релиз будет опубликован после настройки Developer ID secrets.
-
-> **Подпись macOS:** релиз должен быть подписан сертификатом **Developer ID
-> Application** и пройти Apple notarization. Только после этого macOS не
-> показывает предупреждение «Apple could not verify…». Sparkle EdDSA отдельно
-> защищает канал автообновлений и не заменяет Apple notarization.
+> Для установки без предупреждения Gatekeeper публичный релиз должен быть
+> подписан **Developer ID Application** и notarized Apple. Sparkle защищает
+> обновления, но не заменяет подпись macOS. Локальные сборки могут потребовать
+> **Open Anyway** в настройках безопасности.
 
 ### Для разработчиков
 
@@ -44,36 +40,6 @@ open dist/Rukey-1.0.dmg
 ```
 
 Исходный код распространяется по [Apache License 2.0](LICENSE).
-
-### Настройка Apple-подписи для релизов
-
-Для релизов без предупреждения Gatekeeper нужен платный Apple Developer Program,
-сертификат **Developer ID Application** и app-specific password. Сам Sparkle-ключ
-не заменяет Apple-подпись.
-
-Сначала экспортируйте сертификат Developer ID из Keychain Access в `.p12`.
-Затем в Terminal выполните:
-
-```bash
-base64 < DeveloperID.p12 | tr -d '\n' | \
-  gh secret set RUKEY_DEVELOPER_ID_CERTIFICATE_BASE64 --repo RomaFka28/rukey
-gh secret set RUKEY_DEVELOPER_ID_CERTIFICATE_PASSWORD --repo RomaFka28/rukey
-gh secret set RUKEY_DEVELOPER_ID_SIGNING_IDENTITY --repo RomaFka28/rukey
-gh secret set RUKEY_APPLE_ID --repo RomaFka28/rukey
-gh secret set RUKEY_APPLE_TEAM_ID --repo RomaFka28/rukey
-gh secret set RUKEY_APPLE_APP_SPECIFIC_PASSWORD --repo RomaFka28/rukey
-```
-
-Для `RUKEY_DEVELOPER_ID_SIGNING_IDENTITY` нужно указать полное имя сертификата,
-например `Developer ID Application: Roman Example (TEAM123456)`. App-specific
-password создаётся на [appleid.apple.com](https://appleid.apple.com/) в разделе
-**Sign-In and Security → App-Specific Passwords**. После добавления secrets
-создайте новый tag — workflow подпишет приложение, notarize-ит `.app` и `.dmg`,
-прикрепит ticket Apple и проверит Gatekeeper через `spctl`.
-
-Старые secrets `RUKEY_SIGNING_CERTIFICATE_BASE64` и
-`RUKEY_SIGNING_CERTIFICATE_PASSWORD` относятся к локальному self-signed
-сертификату и для публичных релизов больше не используются.
 
 ---
 
@@ -141,45 +107,13 @@ bash tools/package-app.sh
 
 ### Автообновления
 
-GUI использует Sparkle 2.10.1. Обновления принимаются только из GitHub Releases и
-только после проверки EdDSA-подписи Sparkle. Ветка `main` и обычный GitHub ZIP
-не устанавливаются автоматически.
+GUI использует Sparkle 2.10.1. Обновления устанавливаются только из GitHub
+Releases и только после проверки EdDSA-подписи.
 
-Для настройки обновлений один раз:
-
-1. Создайте ключи Sparkle утилитой `generate_keys`.
-2. Сохраните приватный ключ в GitHub Secret `RUKEY_SPARKLE_PRIVATE_KEY`.
-3. Поместите публичный ключ в `Sources/RukeyGUI/Resources/Info.plist` вместо
-   `REPLACE_WITH_SPARKLE_PUBLIC_KEY`.
-4. Сохраните signing certificate приложения в secrets
-   `RUKEY_SIGNING_CERTIFICATE_BASE64` и
-   `RUKEY_SIGNING_CERTIFICATE_PASSWORD`.
-5. Создайте релиз тегом:
-
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-GitHub Actions соберёт подписанный `.app`, создаст `appcast.xml` и опубликует
-релиз. В меню Rukey появится пункт «Проверить обновления…», а Sparkle сможет
-проверять обновления в фоне и перезапускать приложение после установки.
-
-Получить ключи локально можно после сборки Sparkle:
-
-```bash
-find .build -name generate_keys -type f -print -quit
-./.build/artifacts/sparkle/Sparkle/bin/generate_keys
-./.build/artifacts/sparkle/Sparkle/bin/generate_keys -x /tmp/rukey-sparkle-private-key
-```
-
-Содержимое `/tmp/rukey-sparkle-private-key` добавьте в GitHub Secret
-`RUKEY_SPARKLE_PRIVATE_KEY`, затем удалите временный файл. Приватный ключ
-нельзя коммитить или публиковать. Для GitHub Actions также нужны:
-
-- `RUKEY_SIGNING_CERTIFICATE_BASE64` — base64 от `.p12` сертификата подписи
-  приложения;
-- `RUKEY_SIGNING_CERTIFICATE_PASSWORD` — пароль этого `.p12`.
+Подготовка релиза выполняется GitHub Actions после push тега `v*`. Для workflow
+нужны Sparkle private key и Apple Developer secrets; приватные ключи нельзя
+хранить в репозитории. Подробности и сами secrets находятся в настройках
+GitHub Actions, а не в пользовательской инструкции.
 
 ### Первый запуск и права Accessibility
 - `open dist/Rukey.app` (или двойной клик) — приложение стартует без окна консоли и без значка в Dock: в строке меню появляется иконка-молния.
