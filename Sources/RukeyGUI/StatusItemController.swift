@@ -131,6 +131,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     /// when nil, same guard style as `onOpenSettings`.
     private let onOpenAccessibility: (() -> Void)?
     private let onOpenLog: (() -> Void)?
+    private let onCheckForUpdates: (() -> Void)?
     private let onToggleLaunchAtLogin: (Bool) -> Void
     private let onRemoveLearnedWord: (String) -> Void
     /// Asked right before the menu displays, so the owner can republish the
@@ -148,6 +149,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         onOpenSettings: (() -> Void)? = nil,
         onOpenAccessibility: (() -> Void)? = nil,
         onOpenLog: (() -> Void)? = nil,
+        onCheckForUpdates: (() -> Void)? = nil,
         onToggleLaunchAtLogin: @escaping (Bool) -> Void,
         onRemoveLearnedWord: @escaping (String) -> Void,
         onRefreshModel: (() -> Void)? = nil
@@ -155,6 +157,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         self.onOpenSettings = onOpenSettings
         self.onOpenAccessibility = onOpenAccessibility
         self.onOpenLog = onOpenLog
+        self.onCheckForUpdates = onCheckForUpdates
         self.onToggleLaunchAtLogin = onToggleLaunchAtLogin
         self.onRemoveLearnedWord = onRemoveLearnedWord
         self.onRefreshModel = onRefreshModel
@@ -284,6 +287,14 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         log.isEnabled = onOpenLog != nil
         menu.addItem(log)
 
+        let updates = NSMenuItem(
+            title: "Проверить обновления…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: "")
+        updates.target = self
+        updates.isEnabled = onCheckForUpdates != nil
+        menu.addItem(updates)
+
         menu.addItem(.separator())
 
         // No target: the action travels the responder chain to `NSApp`, whose
@@ -329,6 +340,10 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openLog(_ sender: NSMenuItem) {
         onOpenLog?()
+    }
+
+    @objc private func checkForUpdates(_ sender: NSMenuItem) {
+        onCheckForUpdates?()
     }
 
     // MARK: - Icon flash

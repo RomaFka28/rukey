@@ -71,6 +71,48 @@ bash tools/package-app.sh
 
 `tools/package-app.sh` собирает релизную `RukeyGUI`, укладывает `dist/Rukey.app` (вместе со словарями) и подписывает бандл с hardened runtime идентичностью «Rukey Local Signing». Скрипты идемпотентны: повторный запуск пересобирает и переподписывает тот же бандл, идентификатор и сертификат не меняются — поэтому выданные права Accessibility переживают пересборку. Если системная настройка доверия к сертификату не добавлена, `make-signing-cert.sh` нужно запустить из обычного окна Terminal и подтвердить запрос. Подпись требует доверенной идентичности (`security find-identity -v -p codesigning`); без неё `package-app.sh` отказывается упаковывать и подписывать бандл.
 
+### Автообновления
+
+GUI использует Sparkle 2.10.1. Обновления принимаются только из GitHub Releases и
+только после проверки EdDSA-подписи Sparkle. Ветка `main` и обычный GitHub ZIP
+не устанавливаются автоматически.
+
+Для настройки обновлений один раз:
+
+1. Создайте ключи Sparkle утилитой `generate_keys`.
+2. Сохраните приватный ключ в GitHub Secret `RUKEY_SPARKLE_PRIVATE_KEY`.
+3. Поместите публичный ключ в `Sources/RukeyGUI/Resources/Info.plist` вместо
+   `REPLACE_WITH_SPARKLE_PUBLIC_KEY`.
+4. Сохраните signing certificate приложения в secrets
+   `RUKEY_SIGNING_CERTIFICATE_BASE64` и
+   `RUKEY_SIGNING_CERTIFICATE_PASSWORD`.
+5. Создайте релиз тегом:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+GitHub Actions соберёт подписанный `.app`, создаст `appcast.xml` и опубликует
+релиз. В меню Rukey появится пункт «Проверить обновления…», а Sparkle сможет
+проверять обновления в фоне и перезапускать приложение после установки.
+
+Получить ключи локально можно после сборки Sparkle:
+
+```bash
+find .build -name generate_keys -type f -print -quit
+./.build/artifacts/sparkle/Sparkle/bin/generate_keys
+./.build/artifacts/sparkle/Sparkle/bin/generate_keys -x /tmp/rukey-sparkle-private-key
+```
+
+Содержимое `/tmp/rukey-sparkle-private-key` добавьте в GitHub Secret
+`RUKEY_SPARKLE_PRIVATE_KEY`, затем удалите временный файл. Приватный ключ
+нельзя коммитить или публиковать. Для GitHub Actions также нужны:
+
+- `RUKEY_SIGNING_CERTIFICATE_BASE64` — base64 от `.p12` сертификата подписи
+  приложения;
+- `RUKEY_SIGNING_CERTIFICATE_PASSWORD` — пароль этого `.p12`.
+
 ### Первый запуск и права Accessibility
 - `open dist/Rukey.app` (или двойной клик) — приложение стартует без окна консоли и без значка в Dock: в строке меню появляется иконка-молния.
 - У приложения есть отдельная иконка Finder/Dock; иконка в строке меню остаётся компактной template-иконкой.

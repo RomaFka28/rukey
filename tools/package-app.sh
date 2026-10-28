@@ -32,7 +32,8 @@ set -euo pipefail
 PRODUCT_NAME="RukeyGUI"
 APP_NAME="Rukey"
 RESOURCE_BUNDLE_NAME="Rukey_RukeyCore.bundle"
-IDENTITY_NAME="Rukey Local Signing"
+IDENTITY_NAME="${SIGNING_IDENTITY:-Rukey Local Signing}"
+APP_VERSION="${APP_VERSION:-1.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -94,6 +95,10 @@ install -m 755 "$BIN_DIR/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$INFO_PLIST" "$APP_DIR/Contents/Info.plist"
 cp "$ICON_FILE" "$APP_DIR/Contents/Resources/"
 cp -R "$BIN_DIR/$RESOURCE_BUNDLE_NAME" "$APP_DIR/Contents/Resources/"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" \
+  "$APP_DIR/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" \
+  "$APP_DIR/Contents/Info.plist"
 
 echo "Signing with '$IDENTITY_NAME' ($IDENTITY)..." >&2
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$APP_DIR"

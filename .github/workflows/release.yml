@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import Apple signing certificate
+        env:
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.RUKEY_SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.RUKEY_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$SIGNING_CERTIFICATE_BASE64"
+          test -n "$SIGNING_CERTIFICATE_PASSWORD"
+          KEYCHAIN="$RUNNER_TEMP/rukey-signing.keychain-db"
+          security create-keychain -p "$SIGNING_CERTIFICATE_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$SIGNING_CERTIFICATE_PASSWORD" "$KEYCHAIN"
+          echo "$SIGNING_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build signed application
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${APP_VERSION#v}"
+          APP_VERSION="$VERSION" bash tools/package-app.sh
+
+      - name: Create update archive
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Rukey.app "Rukey-${GITHUB_REF_NAME#v}.zip"
+
+      - name: Require configured Sparkle public key
+        run: |
+          ! grep -q "REPLACE_WITH_SPARKLE_PUBLIC_KEY" \
+            Sources/RukeyGUI/Resources/Info.plist
+
+      - name: Download Sparkle tools
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/sparkle.zip" \
+            https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-for-Swift-Package-Manager.zip
+          ditto -x -k "$RUNNER_TEMP/sparkle.zip" "$RUNNER_TEMP/sparkle"
+          find "$RUNNER_TEMP/sparkle" -name generate_appcast -type f -print -quit > "$RUNNER_TEMP/generate_appcast.path"
+          test -s "$RUNNER_TEMP/generate_appcast.path"
+
+      - name: Generate signed appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.RUKEY_SPARKLE_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY"
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key"
+          TOOL="$(cat "$RUNNER_TEMP/generate_appcast.path")"
+          mkdir -p dist/appcast
+          cp "Rukey-${GITHUB_REF_NAME#v}.zip" dist/appcast/
+          "$TOOL" \
+            --ed-key-file "$RUNNER_TEMP/sparkle-private-key" \
+            --download-url-prefix \
+              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            dist/appcast
+          test -f dist/appcast/appcast.xml
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "Rukey-${GITHUB_REF_NAME#v}.zip" \
+            "dist/appcast/appcast.xml" \
+            --title "Rukey ${GITHUB_REF_NAME#v}" \
+            --generate-notes

@@ -51,6 +51,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// unbundled process and the default argument evaluates at the call site
     /// (see `buildEngineIfNeeded`). Nil under `swift run` and in tests.
     private var notificationService: NotificationService?
+    private var updateController: UpdateController?
     /// Whether `engine.tapManager.start()` actually started the tap. A grant
     /// alone must not read "Работает": the status line distinguishes a real
     /// running tap from a failed start ("Не запущено").
@@ -82,6 +83,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             onOpenLog: { [weak self] in
                 self?.openLog()
             },
+            onCheckForUpdates: { [weak self] in
+                self?.updateController?.checkForUpdates()
+            },
             onToggleLaunchAtLogin: { [weak self] enabled in
                 self?.setLaunchAtLogin(enabled)
             },
@@ -92,6 +96,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.refreshStatusModel()
             })
         self.statusItem = statusItem
+        updateController = UpdateController()
         refreshStatusModel()
 
         gate.start()

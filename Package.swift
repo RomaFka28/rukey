@@ -11,6 +11,9 @@ let package = Package(
         .executable(name: "rukey", targets: ["RukeyApp"]),
         .executable(name: "rukey-measure", targets: ["RukeyMeasure"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+    ],
     targets: [
         .target(
             name: "RukeyCore",
@@ -28,7 +31,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "RukeyGUI",
-            dependencies: ["RukeyCore"],
+            dependencies: [
+                "RukeyCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             exclude: ["Resources"]
         ),
         .testTarget(
