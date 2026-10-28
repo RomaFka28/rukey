@@ -33,6 +33,7 @@ PRODUCT_NAME="RukeyGUI"
 APP_NAME="Rukey"
 RESOURCE_BUNDLE_NAME="Rukey_RukeyCore.bundle"
 IDENTITY_NAME="${SIGNING_IDENTITY:-Rukey Local Signing}"
+EXPLICIT_IDENTITY="${SIGNING_IDENTITY:-}"
 APP_VERSION="${APP_VERSION:-1.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,8 +72,12 @@ if [ ! -f "$ICON_FILE" ]; then
   exit 1
 fi
 
-IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
-  | awk -v name="\"$IDENTITY_NAME\"" 'index($0, name) { print $2; exit }')"
+if [ -n "$EXPLICIT_IDENTITY" ]; then
+  IDENTITY="$EXPLICIT_IDENTITY"
+else
+  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v name="\"$IDENTITY_NAME\"" 'index($0, name) { print $2; exit }')"
+fi
 if [ -z "$IDENTITY" ]; then
   echo "error: no valid code-signing identity named '$IDENTITY_NAME'." >&2
   echo "       Create it first with tools/make-signing-cert.sh." >&2
