@@ -10,12 +10,17 @@
       <stop offset="0" stop-color="#67e8f9"/>
       <stop offset="1" stop-color="#38bdf8"/>
     </linearGradient>
+    <clipPath id="icon-clip">
+      <rect x="10" y="10" width="236" height="236" rx="54"/>
+    </clipPath>
   </defs>
   <rect width="1200" height="420" rx="48" fill="url(#bg)"/>
   <g transform="translate(82 82)">
-    <rect width="256" height="256" rx="58" fill="url(#accent)"/>
-    <path d="M66 82h124v34H66zm0 58h124v34H66zm0 58h78v34H66z" fill="#082f49"/>
-    <path d="M178 194l30 30-30 30" fill="none" stroke="#082f49" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="10" y="10" width="236" height="236" rx="54" fill="url(#accent)"/>
+    <g clip-path="url(#icon-clip)" fill="#082f49">
+      <path d="M58 76h124v34H58zm0 58h124v34H58zm0 58h78v34H58z"/>
+      <path d="M174 190l38 38-38 38-13-13 25-25-25-25z"/>
+    </g>
   </g>
   <text x="400" y="214" fill="#f8fafc" font-family="Helvetica Neue,Arial,sans-serif" font-size="132" font-weight="700" letter-spacing="-5">Rukey</text>
   <text x="408" y="278" fill="#bae6fd" font-family="Helvetica Neue,Arial,sans-serif" font-size="30" letter-spacing="3">SMART LAYOUT SWITCHER FOR macOS</text>
