@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build
+
+      - name: Run tests
+        run: swift test
+
+      - name: Run benchmark and scenario checks
+        run: swift run rukey-measure
+
+      - name: Smoke-test GUI executable
+        run: |
+          BIN_DIR="$(swift build -c release --show-bin-path)"
+          "$BIN_DIR/RukeyGUI" &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+          sleep 5
+          kill -0 "$APP_PID"

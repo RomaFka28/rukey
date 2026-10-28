@@ -36,6 +36,12 @@ jobs:
       - name: Resolve dependencies
         run: swift package resolve
 
+      - name: Run tests
+        run: swift test
+
+      - name: Run benchmark and scenario checks
+        run: swift run rukey-measure
+
       - name: Build signed application
         env:
           APP_VERSION: ${{ github.ref_name }}
