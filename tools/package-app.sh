@@ -101,12 +101,24 @@ if [ -z "$SPARKLE_FRAMEWORK" ]; then
   exit 1
 fi
 
+# The trusted-identity check exists so a broken or untrusted local cert
+# fails loudly instead of producing an app that macOS rejects. macOS
+# requires an interactive GUI prompt to add trustRoot anywhere, so CI
+# cannot satisfy it; when RUKEY_SKIP_TRUST_CHECK=yes is set explicitly,
+# an untrusted-but-present identity is accepted. codesign does not itself
+# need trust, and the app launches via the disable-library-validation
+# entitlement. Local default stays strict.
+TRUST_OPTION="-v"
+if [ "${RUKEY_SKIP_TRUST_CHECK:-no}" = "yes" ]; then
+  TRUST_OPTION=""
+fi
+
 if [ -n "$EXPLICIT_IDENTITY" ]; then
-  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+  IDENTITY="$(security find-identity $TRUST_OPTION -p codesigning 2>/dev/null \
     | awk -v requested="$EXPLICIT_IDENTITY" \
       'index($0, requested) { print $2; exit }')"
 else
-  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+  IDENTITY="$(security find-identity $TRUST_OPTION -p codesigning 2>/dev/null \
     | awk -v name="\"$IDENTITY_NAME\"" 'index($0, name) { print $2; exit }')"
 fi
 if [ -z "$IDENTITY" ]; then
