@@ -11,7 +11,7 @@
   --muted: #a3a3a3;
   --faint: #737373;
   --accent: #67e8f9;
-  --gradient: linear-gradient(135deg, #67e8f9, #38bdf8);
+  --gradient: linear-gradient(135deg, #67e8f9, #38bdf8); /* only inside the logo bolt — never for text or backgrounds */
   --font-serif: "Lora", Georgia, serif;
   --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, Menlo, monospace;
@@ -167,7 +167,7 @@ code, .mono {
 }
 
 .nav-lang a {
-  color: var(--faint);
+  color: var(--muted);
   padding: 4px 6px;
 }
 
@@ -188,7 +188,7 @@ code, .mono {
   padding: 10px 18px;
   border-radius: 6px;
   background: var(--text);
-  color: #0a0a0a;
+  color: var(--bg);
   font-family: var(--font-sans);
   font-size: .9rem;
   font-weight: 600;
@@ -244,7 +244,7 @@ code, .mono {
 .demo-word.is-struck {
   color: var(--faint);
   text-decoration: line-through;
-  text-decoration-color: #ef4444;
+  text-decoration-color: var(--muted);
 }
 
 .demo-word.is-fixed,
@@ -304,7 +304,7 @@ code, .mono {
 .footer {
   border-top: 1px solid var(--border);
   padding: 32px 0 48px;
-  color: var(--faint);
+  color: var(--muted);
   font-size: .85rem;
 }
 
@@ -370,7 +370,16 @@ code, .mono {
     padding: 48px 0;
   }
 
+  /* Keep primary nav reachable on phones: scrollable one-liner, no scrollbar. */
   .nav-links {
+    display: flex;
+    overflow-x: auto;
+    gap: 14px;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+
+  .nav-links::-webkit-scrollbar {
     display: none;
   }
 }
