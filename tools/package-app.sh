@@ -40,6 +40,16 @@ CODESIGN_TIMESTAMP="${CODESIGN_TIMESTAMP:-no}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Self-signed identity has no Team ID; hardened runtime rejects libraries
+# signed by any other signer ("different Team IDs"). The entitlement disables
+# that check so the locally-signed Sparkle framework loads. Applied only for
+# the local identity — CI/release signing uses a Developer ID identity, whose
+# Team ID matches everywhere, so no entitlement is added (and the release
+# build stays byte-compatible with what notarization accepted before).
+# The final `codesign` of the .app re-signs the main Mach-O, so the
+# entitlement must be passed at every signing step — otherwise it is stripped
+# from the main binary.
+ENTITLEMENTS_PLIST="$ROOT_DIR/tools/RukeyLocal.entitlements"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$ROOT_DIR/Sources/RukeyGUI/Resources/Info.plist"
 ICON_FILE="$ROOT_DIR/Sources/RukeyGUI/Resources/Rukey.icns"
@@ -135,6 +145,12 @@ fi
 
 echo "Signing with '$IDENTITY_NAME' ($IDENTITY)..." >&2
 codesign_args=(--force --sign "$IDENTITY" --options runtime)
+# Only the local self-signed identity needs the entitlement; an explicit
+# Developer ID identity (CI/release) signs everything with one Team ID, so
+# library validation passes without it.
+if [ -z "$EXPLICIT_IDENTITY" ]; then
+  codesign_args+=(--entitlements "$ENTITLEMENTS_PLIST")
+fi
 if [ "$CODESIGN_TIMESTAMP" = "yes" ]; then
   codesign_args+=(--timestamp)
 else
