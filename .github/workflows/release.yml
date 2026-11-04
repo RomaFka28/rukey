@@ -32,6 +32,13 @@ jobs:
             -s -k "$SIGNING_CERTIFICATE_PASSWORD" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN"
           security default-keychain -s "$KEYCHAIN"
+          # package-app.sh requires a *trusted* identity. The self-signed
+          # cert needs an explicit user-domain trust setting (no admin
+          # rights, no interactive prompt in CI).
+          security find-certificate -c "Rukey Local Signing" -p "$KEYCHAIN" \
+            > "$RUNNER_TEMP/rukey-signing.cer"
+          security add-trusted-cert -r trustRoot -k "$KEYCHAIN" \
+            "$RUNNER_TEMP/rukey-signing.cer"
 
       - name: Resolve dependencies
         run: swift package resolve
