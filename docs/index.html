@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rukey — печатаешь не в той раскладке?</title>
+  <meta name="description" content="Rukey — приложение для macOS, которое на лету исправляет слова, набранные в неверной раскладке EN ↔ RU. Офлайн-словарь, без телеметрии.">
+  <link rel="canonical" href="https://romafka28.github.io/rukey/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="alternate" hreflang="ru" href="https://romafka28.github.io/rukey/">
+  <link rel="alternate" hreflang="en" href="https://romafka28.github.io/rukey/en/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Rukey">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:title" content="Rukey — печатаешь не в той раскладке?">
+  <meta property="og:description" content="Rukey — приложение для macOS, которое на лету исправляет слова, набранные в неверной раскладке EN ↔ RU. Офлайн-словарь, без телеметрии.">
+  <meta property="og:url" content="https://romafka28.github.io/rukey/">
+  <meta property="og:image" content="https://romafka28.github.io/rukey/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Rukey — печатаешь не в той раскладке?">
+  <meta name="twitter:description" content="Rukey — приложение для macOS, которое на лету исправляет слова, набранные в неверной раскладке EN ↔ RU. Офлайн-словарь, без телеметрии.">
+  <meta name="twitter:image" content="https://romafka28.github.io/rukey/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;family=Lora:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a class="nav-brand" href="index.html">
+          <svg class="nav-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <defs>
+              <linearGradient id="bolt-nav" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#67e8f9"/>
+                <stop offset="1" stop-color="#38bdf8"/>
+              </linearGradient>
+            </defs>
+            <path d="M13.5 2 5 14.5h5.5L10 22l8.5-12.5H13z" fill="url(#bolt-nav)"/>
+          </svg>
+          Rukey
+        </a>
+        <nav class="nav-links" aria-label="Разделы">
+          <a href="#problem">01 Проблема</a>
+          <a href="#how">02 Как работает</a>
+          <a href="#install">03 Установка</a>
+          <a href="#usage">04 Использование</a>
+          <a href="#faq">05 FAQ</a>
+          <a href="#changelog">06 Изменения</a>
+        </nav>
+        <a class="btn" href="https://github.com/RomaFka28/rukey/releases/latest">Скачать</a>
+        <nav class="nav-lang" aria-label="Язык сайта">
+          <a href="index.html" aria-current="true" lang="ru" hreflang="ru">RU</a>
+          <a href="en/index.html" lang="en" hreflang="en">EN</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section" id="top">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">Сборник · V1 · macOS</span>
+            <h1 class="display">Печатаешь не в той раскладке.</h1>
+            <p class="lede">Rukey живёт в меню-баре macOS, замечает слово, набранное не в той раскладке, и на лету возвращает нужное. Печатайте как привыкли — остальное приложение сделает само.</p>
+            <p><a class="btn" href="https://github.com/RomaFka28/rukey/releases/latest">Скачать для macOS</a></p>
+            <p class="mono">Apache-2.0 · macOS 13+</p>
+          </div>
+          <div class="col-5">
+            <div class="demo" aria-hidden="true">
+              <div class="demo-line"><span class="demo-word is-struck">ghbdtn</span> <span class="demo-result">привет</span><span class="demo-caret">▌</span></div>
+              <div class="demo-line"><span class="demo-word is-struck">руддщ</span> <span class="demo-result">hello</span><span class="demo-caret">▌</span></div>
+            </div>
+            <p>
+              <svg width="320" height="28" viewBox="0 0 320 28" aria-hidden="true">
+                <defs>
+                  <linearGradient id="bolt-bar" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#67e8f9"/>
+                    <stop offset="1" stop-color="#38bdf8"/>
+                  </linearGradient>
+                </defs>
+                <rect x=".5" y=".5" width="319" height="27" rx="6" fill="#181818" stroke="#262626"/>
+                <g fill="#737373">
+                  <rect x="10" y="13" width="22" height="2" rx="1"/>
+                  <rect x="40" y="13" width="16" height="2" rx="1"/>
+                  <rect x="64" y="13" width="20" height="2" rx="1"/>
+                  <rect x="92" y="13" width="14" height="2" rx="1"/>
+                </g>
+                <g fill="none" stroke="#737373" stroke-width="1.2" stroke-linecap="round">
+                  <path d="M221.5 13.2a9 9 0 0 1 11 0"/>
+                  <path d="M223.8 15.6a6 6 0 0 1 6.4 0"/>
+                  <rect x="244" y="10" width="15" height="8" rx="2"/>
+                  <circle cx="270" cy="13.5" r="3.2"/>
+                  <path d="M272.4 15.9l2.6 2.6"/>
+                </g>
+                <rect x="259.5" y="12.5" width="1.5" height="3" rx=".75" fill="#737373"/>
+                <rect x="246" y="12" width="8" height="4" rx="1" fill="#737373"/>
+                <circle cx="227" cy="18.2" r="1.1" fill="#737373"/>
+                <g transform="translate(280.4 5.3) scale(0.06)">
+                  <path d="M150 28L76 136h49l-20 92 76-116h-50z" fill="url(#bolt-bar)"/>
+                </g>
+                <text x="292" y="17.5" font-family="Inter, -apple-system, sans-serif" font-size="8" fill="#737373">Rukey</text>
+              </svg>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="problem">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">01 — Проблема</span>
+            <h2>Слово набрано — буквы чужие</h2>
+            <p>Вы печатаете <code>ghbdtn</code>, а на экране остаётся <code>ghbdtn</code>, хотя имели в виду «привет». Стереть, переключить раскладку, набрать заново — маленькая потеря, которая повторяется по многу раз в день.</p>
+            <p class="mono">ghbdtn → привет<br>руддщ → hello</p>
+            <p>Rukey замечает это в момент набора: слово уже написано, раскладка уже не та — и возвращает вам то, что вы хотели сказать.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">02 — Как работает</span>
+            <h2>Два словаря и одна проверка</h2>
+            <p>Внутри приложения — два словаря: ≈46 000 английских и ≈48 000 русских слов. Каждое слово проверяется по ним и по перевёрнутой раскладке. Исправление срабатывает, только если исходное написание в словаре отсутствует, а перевёрнутое — есть. Поэтому «привет» остаётся «приветом», а <code>ghbdtn</code> становится «привет».</p>
+            <p>Словари встроены в приложение: всё работает офлайн, без обращений к сети.</p>
+            <p>Приложение в меню-баре и демон <code>rukey</code> используют один и тот же движок из <code>RukeyCore</code> — поведение у них одинаковое.</p>
+            <h3>Один тап Option — и отмена</h3>
+            <p>Если исправление оказалось лишним, нажмите Option один раз: Rukey вернёт исходный текст. Когда одно и то же слово отменяют несколько раз, приложение запоминает его и перестаёт трогать.</p>
+            <h3>Защищённый ввод</h3>
+            <p>В полях с Secure Input — паролях, платёжных формах — Rukey автоматически отступает и ничего не меняет.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">03 — Установка</span>
+            <h2>Три шага</h2>
+            <ol>
+              <li>Скачайте <code>Rukey-*.dmg</code> со <a href="https://github.com/RomaFka28/rukey/releases/latest">страницы релизов</a> и откройте образ.</li>
+              <li>Перетащите <strong>Rukey.app</strong> в папку <strong>Applications</strong>.</li>
+              <li>Запустите приложение и разрешите доступ: <strong>Системные настройки → Privacy &amp; Security → Accessibility</strong>.</li>
+            </ol>
+            <p>После запуска Rukey живёт в меню-баре — иконки в Dock нет.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="usage">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">04 — Использование</span>
+            <h2>Меню-бар и CLI</h2>
+            <h3>Меню-бар</h3>
+            <p>В строке меню Rukey показывает состояние и текущую раскладку. Оттуда же открываются «Настройки…» и «Журнал…», а «Проверить обновления…» запускает проверку через Sparkle.</p>
+            <p class="mono">Работает · Приостановлено: защищённый ввод · Нет прав Accessibility</p>
+            <h3>CLI</h3>
+            <p>Демон <code>rukey</code> — тот же движок без интерфейса.</p>
+            <pre><code>rukey
+rukey --check-permissions
+rukey --exclude-terminals
+rukey --exclude-bundle &lt;id&gt;
+rukey --test-conversion
+rukey --help</code></pre>
+            <h3>Конфигурация</h3>
+            <ul>
+              <li><code>~/.config/rukey/exclude.json</code> — исключения и общие настройки</li>
+              <li><code>~/.config/rukey/custom.json</code> — пользовательский словарь</li>
+              <li><code>~/.config/rukey/learned.json</code> — данные undo-learning</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7 faq">
+            <span class="kicker">05 — FAQ</span>
+            <h2>Частые вопросы</h2>
+            <details>
+              <summary>Rukey работает офлайн?</summary>
+              <p>Да. Оба словаря встроены в приложение, и вся обработка идёт на вашем Mac. Интернет нужен только для проверки обновлений.</p>
+            </details>
+            <details>
+              <summary>Что происходит с паролями и Secure Input?</summary>
+              <p>В полях с защищённым вводом Rukey отступает автоматически: macOS сообщает о Secure Input, и приложение не вмешивается в набор.</p>
+            </details>
+            <details>
+              <summary>Как отменить исправление?</summary>
+              <p>Нажмите Option один раз — Rukey вернёт исходный текст. Если отменять одно и то же слово несколько раз, приложение запомнит его и перестанет исправлять.</p>
+            </details>
+            <details>
+              <summary>Какие версии macOS поддерживаются?</summary>
+              <p>macOS 13 (Ventura) и новее.</p>
+            </details>
+            <details>
+              <summary>Есть ли телеметрия?</summary>
+              <p>Нет. Rukey не собирает аналитику и не отправляет данные — сеть используется только для проверки и загрузки обновлений через Sparkle.</p>
+            </details>
+            <details>
+              <summary>Как исключить приложение?</summary>
+              <p>Добавьте его bundle ID в <code>~/.config/rukey/exclude.json</code> — например, <code>{"excludeBundleIDs": ["com.apple.Terminal"]}</code>. Терминалы можно исключить разом флагом <code>--exclude-terminals</code>, отдельное приложение — флагом <code>--exclude-bundle &lt;id&gt;</code>. Подробнее — в <a href="https://github.com/RomaFka28/rukey#configuration">README</a>.</p>
+            </details>
+            <details>
+              <summary>Это бесплатно?</summary>
+              <p>Да. Rukey распространяется на условиях Apache-2.0, исходный код открыт <a href="https://github.com/RomaFka28/rukey">на GitHub</a>.</p>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="changelog">
+      <div class="container">
+        <div class="grid">
+          <div class="col-7">
+            <span class="kicker">06 — Изменения</span>
+            <h2>Версия</h2>
+            <p class="mono">v1.0.2 · 2026-10-28</p>
+            <p>Текущий релиз. Что именно изменилось — в заметках к релизу на GitHub.</p>
+            <p><a href="https://github.com/RomaFka28/rukey/releases">Все релизы →</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <a class="nav-brand" href="index.html">
+          <svg class="nav-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <defs>
+              <linearGradient id="bolt-footer" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#67e8f9"/>
+                <stop offset="1" stop-color="#38bdf8"/>
+              </linearGradient>
+            </defs>
+            <path d="M13.5 2 5 14.5h5.5L10 22l8.5-12.5H13z" fill="url(#bolt-footer)"/>
+          </svg>
+          Rukey
+        </a>
+        <span>© 2026</span>
+        <a href="https://github.com/RomaFka28/rukey">GitHub</a>
+        <a href="https://github.com/RomaFka28/rukey/blob/main/LICENSE">Apache-2.0</a>
+        <span>Нет телеметрии. Сеть — только проверка обновлений Sparkle.</span>
+        <div class="nav-lang">
+          <a href="index.html" aria-current="true" lang="ru" hreflang="ru">RU</a>
+          <a href="en/index.html" lang="en" hreflang="en">EN</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
