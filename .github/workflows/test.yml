@@ -27,7 +27,11 @@ jobs:
 
       - name: Smoke-test GUI executable
         run: |
+          # --show-bin-path only prints the path; it never builds. The
+          # runner starts clean, so release must be built here.
+          swift build -c release
           BIN_DIR="$(swift build -c release --show-bin-path)"
+          test -x "$BIN_DIR/RukeyGUI"
           "$BIN_DIR/RukeyGUI" &
           APP_PID=$!
           trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
