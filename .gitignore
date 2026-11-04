@@ -16,3 +16,6 @@ dist/
 # Editor and assistant-local settings.
 .vscode/
 .claude/
+
+# Local-only public-analysis artifact (superpowers workflow; never commit).
+docs/lay-public-analysis.md

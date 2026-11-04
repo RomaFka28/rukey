@@ -1,0 +1,391 @@
+/* Rukey site — design system + component hooks.
+   Palette, type and grid pinned by docs/superpowers/specs/2026-11-04-rukey-site-design.md.
+   Layout and components only; task 2–4 pages add no page-specific CSS. */
+
+:root {
+  --bg: #131313;
+  --panel: #181818;
+  --border: #262626;
+  --text: #fafafa;
+  --body: #d4d4d4;
+  --muted: #a3a3a3;
+  --faint: #737373;
+  --accent: #67e8f9;
+  --gradient: linear-gradient(135deg, #67e8f9, #38bdf8);
+  --font-serif: "Lora", Georgia, serif;
+  --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--body);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-weight: 400;
+  line-height: 1.2;
+  margin: 0 0 .5em;
+}
+
+.display {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+code, .mono {
+  font-family: var(--font-mono);
+  font-size: .9em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Layout ----------------------------------------------------------------- */
+
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 24px;
+}
+
+.col-7 { grid-column: span 7; }
+.col-5 { grid-column: span 5; }
+
+.section {
+  padding: 64px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.section:last-of-type,
+.section.no-border {
+  border-bottom: 0;
+}
+
+.kicker {
+  display: block;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  margin-bottom: 16px;
+}
+
+.lede {
+  font-size: 1.2rem;
+  color: var(--muted);
+  max-width: 44rem;
+}
+
+/* Nav -------------------------------------------------------------------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(19, 19, 19, .92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 60px;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nav-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 20px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.nav-links a {
+  color: var(--muted);
+}
+
+.nav-links a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-lang {
+  display: flex;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+}
+
+.nav-lang a {
+  color: var(--faint);
+  padding: 4px 6px;
+}
+
+.nav-lang a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-lang a[aria-current="true"],
+.nav-lang .is-active {
+  color: var(--accent);
+}
+
+/* Buttons ---------------------------------------------------------------- */
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: var(--text);
+  color: #0a0a0a;
+  font-family: var(--font-sans);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.4;
+  transition: opacity 150ms ease;
+}
+
+.btn:hover {
+  opacity: .85;
+  text-decoration: none;
+}
+
+.btn-ghost {
+  display: inline-block;
+  padding: 9px 17px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.4;
+  transition: border-color 150ms ease;
+}
+
+.btn-ghost:hover {
+  border-color: var(--muted);
+  text-decoration: none;
+}
+
+/* Demo block (task 4) ---------------------------------------------------- */
+
+.demo {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.demo-line {
+  display: block;
+  padding: 6px 0;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.demo-word {
+  color: var(--muted);
+}
+
+.demo-word.is-struck {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+}
+
+.demo-word.is-fixed,
+.demo-result {
+  color: var(--text);
+}
+
+.demo-caret {
+  display: inline-block;
+  width: 1ch;
+  color: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+
+/* FAQ -------------------------------------------------------------------- */
+
+.faq details {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px 0;
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::before {
+  content: "+";
+  display: inline-block;
+  width: 1.2em;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.faq details[open] summary::before {
+  content: "–";
+}
+
+.faq details p {
+  margin: 0 0 16px;
+  padding-left: 1.2em;
+  color: var(--muted);
+}
+
+/* Footer ----------------------------------------------------------------- */
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0 48px;
+  color: var(--faint);
+  font-size: .85rem;
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.footer a {
+  color: var(--muted);
+}
+
+.footer a:hover {
+  color: var(--text);
+}
+
+.footer .nav-lang {
+  margin-left: auto;
+}
+
+/* Reduced motion --------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .demo-caret,
+  .btn,
+  .btn-ghost,
+  .btn-ghost:hover {
+    animation: none;
+    transition: none;
+  }
+
+  /* Task 4 demo: with reduced motion, show the final state statically —
+     no typing loop. site.js must also check this media query. */
+  .demo-word.is-struck {
+    display: none;
+  }
+
+  .demo-word {
+    animation: none !important;
+  }
+}
+
+/* Breakpoints ------------------------------------------------------------ */
+
+@media (max-width: 860px) {
+  .col-7,
+  .col-5 {
+    grid-column: 1 / -1;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .section {
+    padding: 48px 0;
+  }
+
+  .nav-links {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .section {
+    padding: 40px 0;
+  }
+
+  .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer .nav-lang {
+    margin-left: 0;
+  }
+}
