@@ -29,16 +29,12 @@ public final class InputSourceManager: @unchecked Sendable {
     /// Debug check that both layouts were found after a refresh.
     /// Returns true when both `.english` and `.russian` are cached; prints a
     /// warning (no crash) otherwise so missing layouts are visible in logs.
+    /// No fatal assertion: CI runners and fresh Macs do not always have the
+    /// Russian layout installed, and aborting the test process helps no one.
     @discardableResult
     private func validateMappings() -> Bool {
         let hasEnglish = cachedSources[.english] != nil
         let hasRussian = cachedSources[.russian] != nil
-        #if DEBUG
-        assert(
-            hasEnglish && hasRussian,
-            "InputSourceManager: missing cached sources (english: \(hasEnglish), russian: \(hasRussian))"
-        )
-        #endif
         if !hasEnglish || !hasRussian {
             print(
                 "Warning: InputSourceManager missing sources after refresh "
