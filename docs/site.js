@@ -12,11 +12,13 @@
   function runLine(line) {
     var word = line.querySelector('.demo-word');
     var result = line.querySelector('.demo-result');
+    var caret = line.querySelector('.demo-caret');
     if (!word || !result) return; // guard: leave static final state
     var typed = word.textContent;
     var fixed = result.textContent;
     word.style.transition = 'opacity ' + FADE_MS + 'ms';
     result.style.transition = 'opacity ' + FADE_MS + 'ms';
+    if (caret) caret.style.transition = 'opacity ' + FADE_MS + 'ms';
 
     function cycle() {
       return sleep(TYPE_MS).then(function () {
@@ -24,15 +26,18 @@
         word.textContent = '';
         result.style.opacity = '0';
         word.style.opacity = '1';
+        if (caret) { line.insertBefore(caret, result); caret.style.opacity = '1'; }
         var i = 0;
         function type() {
           if (i >= typed.length) return sleep(STRIKE_PAUSE).then(function () {
             word.classList.add('is-struck');
             return sleep(SWAP_PAUSE).then(function () {
               result.style.opacity = '1';
+              if (caret) line.appendChild(caret); // caret belongs after the fix once it appears
               return sleep(HOLD).then(function () {
                 word.style.opacity = '0';
                 result.style.opacity = '0';
+                if (caret) caret.style.opacity = '0';
                 return sleep(FADE_MS);
               });
             });
@@ -71,4 +76,22 @@
     var date = (d.published_at || '').slice(0, 10);
     el.textContent = d.tag_name + (date ? ' · ' + date : '');
   }).catch(function () { /* static fallback stands */ });
+})();
+
+/* Hero menu bar: live local time, formatted like macOS' status clock.
+   Visitor's timezone — the bar shows the time wherever they are. */
+(function () {
+  'use strict';
+  var el = document.getElementById('menubar-clock');
+  if (!el) return;
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function tick() {
+    var d = new Date();
+    el.textContent = DAYS[d.getDay()] + ' ' + MONTHS[d.getMonth()] + ' ' + d.getDate() +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  tick();
+  setInterval(tick, 15000);
 })();

@@ -398,3 +398,85 @@ code, .mono {
     margin-left: 0;
   }
 }
+
+/* Live macOS menu bar illustration (hero). Time comes from the visitor's clock. */
+.menubar {
+  background: #000;
+  border-bottom: 1px solid #2c2c2e;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  margin: 4px 0 0;
+  font: 11px/1 -apple-system, system-ui, sans-serif;
+  color: #f5f5f7;
+  overflow: hidden;
+}
+
+.menubar-items {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.menubar-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.menubar-icon svg {
+  display: block;
+}
+
+.menubar-bolt { width: 14px; height: 14px; }
+.menubar-cursor { width: 12px; height: 13px; }
+.menubar-wifi { width: 15px; height: 15px; }
+
+.menubar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #f5f5f7;
+  border-radius: 3.5px;
+  font-size: 8.5px;
+}
+
+.menubar-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 7.5px;
+}
+
+.menubar-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: 24px;
+  height: 14px;
+  border: 1.2px solid #f5f5f7;
+  border-radius: 7px;
+  padding: 0 2px;
+  box-sizing: border-box;
+}
+
+.menubar-toggle::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f5f5f7;
+}
+
+.menubar-clock {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .menubar { gap: 10px; }
+  .menubar-items { gap: 10px; }
+  .menubar-hide-s { display: none; }
+}
