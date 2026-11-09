@@ -101,8 +101,13 @@
             <span class="kicker">PROBLEM</span>
             <h2>The word is there, the letters are not</h2>
             <p>You type <code>ghbdtn</code>, and <code>ghbdtn</code> stays on the screen, though you meant «привет». Erase it, switch the layout, type it again — a small loss that repeats many times a day.</p>
-            <p class="mono">ghbdtn → привет<br>руддщ → hello</p>
             <p>Rukey catches it the moment you type: the word is already written, the layout is already wrong — and it gives you back what you meant to say.</p>
+          </div>
+          <div class="col-5 rail">
+            <div class="transform-card" aria-hidden="true">
+              <span class="transform-row"><span class="wrong">ghbdtn</span><span class="t-arrow">→</span><span class="right">привет</span></span>
+              <span class="transform-row"><span class="wrong">руддщ</span><span class="t-arrow">→</span><span class="right">hello</span></span>
+            </div>
           </div>
         </div>
       </div>
@@ -122,6 +127,13 @@
             <h3>Secure Input</h3>
             <p>In fields with Secure Input — passwords, payment forms — Rukey steps aside automatically and changes nothing.</p>
           </div>
+          <div class="col-5 rail">
+            <div class="facts">
+              <div class="fact"><span class="fact-k">≈46 000 + ≈48 000</span><span class="fact-v">English and Russian words in the two bundled dictionaries</span></div>
+              <div class="fact"><span class="fact-k">offline</span><span class="fact-v">everything runs on your Mac, with no network calls</span></div>
+              <div class="fact"><span class="fact-k">RukeyCore</span><span class="fact-v">one engine for the menu bar app and the CLI</span></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -129,15 +141,15 @@
     <section class="section" id="install">
       <div class="container">
         <div class="grid">
-          <div class="col-7">
+          <div class="col-full">
             <span class="kicker">INSTALL</span>
             <h2>Three steps</h2>
-            <ol>
-              <li>Download <code>Rukey-*.dmg</code> from the <a href="https://github.com/RomaFka28/rukey/releases/latest">releases page</a> and open the disk image.</li>
-              <li>Drag <strong>Rukey.app</strong> to the <strong>Applications</strong> folder.</li>
-              <li>Launch the app and grant access: <strong>System Settings → Privacy &amp; Security → Accessibility</strong>.</li>
+            <ol class="steps">
+              <li><span class="step-n">01</span><h3>Download</h3><p><code>Rukey-*.dmg</code> from the <a href="https://github.com/RomaFka28/rukey/releases/latest">releases page</a>, open the disk image.</p></li>
+              <li><span class="step-n">02</span><h3>Drag to Applications</h3><p><strong>Rukey.app</strong> into the <strong>Applications</strong> folder.</p></li>
+              <li><span class="step-n">03</span><h3>Grant access</h3><p><strong>System Settings → Privacy &amp; Security → Accessibility</strong></p></li>
             </ol>
-            <p>Once running, Rukey lives in the menu bar — there is no Dock icon.</p>
+            <p class="note">Once running, Rukey lives in the menu bar — there is no Dock icon.</p>
           </div>
         </div>
       </div>
@@ -146,7 +158,7 @@
     <section class="section" id="usage">
       <div class="container">
         <div class="grid">
-          <div class="col-7">
+          <div class="col-8">
             <span class="kicker">USAGE</span>
             <h2>Menu bar and CLI</h2>
             <h3>Menu bar</h3>
@@ -154,7 +166,7 @@
             <p class="mono">Working · Paused: Secure Input · No Accessibility permission</p>
             <h3>CLI</h3>
             <p>The <code>rukey</code> daemon is the same engine without a UI.</p>
-            <pre><code>rukey
+            <pre class="code-panel"><code>rukey
 rukey --check-permissions
 rukey --exclude-terminals
 rukey --exclude-bundle &lt;id&gt;
@@ -174,7 +186,7 @@ rukey --help</code></pre>
     <section class="section" id="faq">
       <div class="container">
         <div class="grid">
-          <div class="col-7 faq">
+          <div class="col-8 faq">
             <span class="kicker">FAQ</span>
             <h2>Common questions</h2>
             <details>
@@ -216,9 +228,9 @@ rukey --help</code></pre>
           <div class="col-7">
             <span class="kicker">CHANGES</span>
             <h2>Version</h2>
-            <p class="mono" id="release">v1.0.3 · 2026-11-04</p>
+            <p><span class="version-badge" id="release">v1.0.3 · 2026-11-04</span></p>
             <p>The current release. What changed is in the release notes on GitHub.</p>
-            <p><a href="https://github.com/RomaFka28/rukey/releases">All releases →</a></p>
+            <p><a class="btn-ghost" href="https://github.com/RomaFka28/rukey/releases">All releases →</a></p>
           </div>
         </div>
       </div>
