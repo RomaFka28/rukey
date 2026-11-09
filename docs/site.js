@@ -17,7 +17,7 @@
     var typed = word.textContent;
     var fixed = result.textContent;
     word.style.transition = 'opacity ' + FADE_MS + 'ms';
-    result.style.transition = 'opacity ' + FADE_MS + 'ms';
+    result.style.transition = 'opacity 340ms ease, transform 340ms ease';
     if (caret) caret.style.transition = 'opacity ' + FADE_MS + 'ms';
 
     function cycle() {
@@ -25,6 +25,7 @@
         word.classList.remove('is-struck');
         word.textContent = '';
         result.style.opacity = '0';
+        result.style.transform = 'translateY(4px)';
         word.style.opacity = '1';
         if (caret) { line.insertBefore(caret, result); caret.style.opacity = '1'; }
         var i = 0;
@@ -33,6 +34,7 @@
             word.classList.add('is-struck');
             return sleep(SWAP_PAUSE).then(function () {
               result.style.opacity = '1';
+              result.style.transform = 'translateY(0)';
               if (caret) line.appendChild(caret); // caret belongs after the fix once it appears
               return sleep(HOLD).then(function () {
                 word.style.opacity = '0';

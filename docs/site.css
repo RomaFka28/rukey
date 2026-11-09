@@ -399,84 +399,60 @@ code, .mono {
   }
 }
 
-/* Live macOS menu bar illustration (hero). Time comes from the visitor's clock. */
-.menubar {
-  background: #000;
-  border-bottom: 1px solid #2c2c2e;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  margin: 4px 0 0;
-  font: 11px/1 -apple-system, system-ui, sans-serif;
-  color: #f5f5f7;
+/* Hero "macOS screen": menu bar + demo, one unified panel. */
+.screen {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   overflow: hidden;
 }
 
-.menubar-items {
+.screen .demo {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.menubar {
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin: 0 auto;
+  gap: 10px;
+  padding: 0 14px;
+  background: #161617;
+  border-bottom: 1px solid #2a2a2c;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-family: -apple-system, system-ui, sans-serif;
+  color: #f5f5f7;
 }
 
-.menubar-icon {
-  display: inline-flex;
+.menubar-app {
+  display: flex;
   align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-.menubar-icon svg {
-  display: block;
-}
-
-.menubar-bolt { width: 14px; height: 14px; }
-.menubar-cursor { width: 12px; height: 13px; }
-.menubar-wifi { width: 15px; height: 15px; }
-
-.menubar-badge {
-  display: inline-flex;
+.menubar-status {
+  margin-left: auto;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: 1px solid #f5f5f7;
-  border-radius: 3.5px;
-  font-size: 8.5px;
-}
-
-.menubar-battery {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 7.5px;
-}
-
-.menubar-toggle {
-  display: inline-flex;
-  align-items: center;
-  width: 24px;
-  height: 14px;
-  border: 1.2px solid #f5f5f7;
-  border-radius: 7px;
-  padding: 0 2px;
-  box-sizing: border-box;
-}
-
-.menubar-toggle::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #f5f5f7;
+  gap: 14px;
 }
 
 .menubar-clock {
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
+.demo-word {
+  transition: color 300ms ease;
+}
+
 @media (max-width: 560px) {
-  .menubar { gap: 10px; }
-  .menubar-items { gap: 10px; }
-  .menubar-hide-s { display: none; }
+  .menubar { padding: 0 10px; gap: 8px; }
+  .menubar-status { gap: 10px; }
 }
