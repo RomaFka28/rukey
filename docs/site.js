@@ -55,3 +55,20 @@
     }
   }
 })();
+
+/* Changelog line: fill from the latest GitHub release so it never goes stale.
+   No JS, or any API failure, leaves the static text in the markup. */
+(function () {
+  'use strict';
+  var el = document.getElementById('release');
+  if (!el || !window.fetch) return;
+  fetch('https://api.github.com/repos/RomaFka28/rukey/releases/latest', {
+    headers: { 'Accept': 'application/vnd.github+json' }
+  }).then(function (r) {
+    return r.ok ? r.json() : null;
+  }).then(function (d) {
+    if (!d || !d.tag_name) return;
+    var date = (d.published_at || '').slice(0, 10);
+    el.textContent = d.tag_name + (date ? ' · ' + date : '');
+  }).catch(function () { /* static fallback stands */ });
+})();

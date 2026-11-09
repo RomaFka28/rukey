@@ -19,3 +19,7 @@ dist/
 
 # Local-only public-analysis artifact (superpowers workflow; never commit).
 docs/lay-public-analysis.md
+
+# Agent workflow artifacts and Xcode user state — never part of the published site.
+docs/superpowers/
+.swiftpm/
