@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://romafka28.github.io/rukey/"><img alt="Website" src="https://img.shields.io/badge/website-38bdf8?style=flat-square&label=rukey.github.io"></a>
   <a href="https://github.com/RomaFka28/rukey/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RomaFka28/rukey?style=flat-square&label=release"></a>
   <a href="https://github.com/RomaFka28/rukey/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/RomaFka28/rukey/release.yml?style=flat-square&label=release%20build"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-38bdf8?style=flat-square"></a>
