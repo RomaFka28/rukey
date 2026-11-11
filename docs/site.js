@@ -50,7 +50,13 @@
         return type();
       }).then(cycle);
     }
-    cycle();
+    cycle().catch(function () {
+      // A failed cycle must never leave an empty line: fall back to the static final state.
+      word.textContent = typed;
+      word.classList.add('is-struck');
+      result.style.opacity = '1';
+      result.style.transform = 'none';
+    });
   }
 
   var blocks = document.querySelectorAll('.demo');
@@ -86,8 +92,11 @@
   'use strict';
   var el = document.getElementById('menubar-clock');
   if (!el) return;
-  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var ru = document.documentElement.lang === 'ru';
+  var DAYS = ru ? ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+                : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTHS = ru ? ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+                  : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function tick() {
     var d = new Date();

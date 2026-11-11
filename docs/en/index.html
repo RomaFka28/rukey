@@ -9,6 +9,7 @@
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="alternate" hreflang="ru" href="https://romafka28.github.io/rukey/">
   <link rel="alternate" hreflang="en" href="https://romafka28.github.io/rukey/en/">
+  <link rel="alternate" hreflang="x-default" href="https://romafka28.github.io/rukey/">
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Rukey">
@@ -24,7 +25,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;family=Lora:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="../site.css">
 </head>
 <body>
@@ -65,7 +66,7 @@
       <div class="container">
         <div class="grid">
           <div class="col-7">
-            <span class="kicker">Issue · V1 · macOS</span>
+            <span class="group-label">Release · V1 · macOS</span>
             <h1 class="display">Typed in the wrong layout.</h1>
             <p class="lede">Rukey lives in the macOS menu bar. It notices a word typed in the wrong layout and puts the right one back as you go. Type the way you always have — the rest happens on its own.</p>
             <p><a class="btn" href="https://github.com/RomaFka28/rukey/releases/latest">Download for macOS</a></p>
@@ -81,7 +82,7 @@
                 <span class="menubar-status">
                   <svg width="14" height="15" viewBox="76 28 74 192"><path d="M150 28L76 136h49l-20 92 76-116h-50z" fill="#f5f5f7"/></svg>
                   <svg width="24" height="12" viewBox="0 0 24 12"><rect x=".5" y=".5" width="19" height="11" rx="3" fill="none" stroke="#f5f5f7" stroke-opacity=".9" stroke-width="1.1"/><rect x="2.2" y="2.2" width="12.5" height="7.6" rx="1.5" fill="#f5f5f7"/><rect x="21.5" y="4" width="2" height="4" rx="1" fill="#f5f5f7" fill-opacity=".9"/></svg>
-                  <time class="menubar-clock" id="menubar-clock">Mon Nov 9 09:00</time>
+                  <span class="menubar-clock" id="menubar-clock">Mon Nov 9 09:00</span>
                 </span>
               </div>
               <div class="demo" aria-hidden="true">
@@ -98,13 +99,13 @@
       <div class="container">
         <div class="grid">
           <div class="col-7">
-            <span class="kicker">PROBLEM</span>
+            <span class="group-label">PROBLEM</span>
             <h2>The word is there, the letters are not</h2>
             <p>You type <code>ghbdtn</code>, and <code>ghbdtn</code> stays on the screen, though you meant «привет». Erase it, switch the layout, type it again — a small loss that repeats many times a day.</p>
             <p>Rukey catches it the moment you type: the word is already written, the layout is already wrong — and it gives you back what you meant to say.</p>
           </div>
           <div class="col-5 rail">
-            <div class="transform-card" aria-hidden="true">
+            <div class="group" aria-hidden="true">
               <span class="transform-row"><span class="wrong">ghbdtn</span><span class="t-arrow">→</span><span class="right">привет</span></span>
               <span class="transform-row"><span class="wrong">руддщ</span><span class="t-arrow">→</span><span class="right">hello</span></span>
             </div>
@@ -117,7 +118,7 @@
       <div class="container">
         <div class="grid">
           <div class="col-7">
-            <span class="kicker">HOW IT WORKS</span>
+            <span class="group-label">HOW IT WORKS</span>
             <h2>Two dictionaries and one check</h2>
             <p>Inside the app are two dictionaries: ≈46 000 English and ≈48 000 Russian words. Every word is checked against them and against the flipped layout. A correction fires only when the original spelling is absent from the dictionary and the flipped one is present. So «привет» stays «привет», and <code>ghbdtn</code> becomes «привет».</p>
             <p>The dictionaries are bundled into the app: everything works offline, with no network calls.</p>
@@ -125,13 +126,13 @@
             <h3>One Option tap to undo</h3>
             <p>If a correction was unwanted, press Option once: Rukey restores the original text. When the same word is undone several times, the app remembers it and stops touching it.</p>
             <h3>Secure Input</h3>
-            <p>In fields with Secure Input — passwords, payment forms — Rukey steps aside automatically and changes nothing.</p>
+            <p>In fields with Secure Input — password fields, for example — Rukey steps aside automatically and changes nothing.</p>
           </div>
           <div class="col-5 rail">
-            <div class="facts">
-              <div class="fact"><span class="fact-k">≈46 000 + ≈48 000</span><span class="fact-v">English and Russian words in the two bundled dictionaries</span></div>
-              <div class="fact"><span class="fact-k">offline</span><span class="fact-v">everything runs on your Mac, with no network calls</span></div>
-              <div class="fact"><span class="fact-k">RukeyCore</span><span class="fact-v">one engine for the menu bar app and the CLI</span></div>
+            <div class="group">
+              <div class="row"><div class="row-body"><span class="row-title mono">≈46 000 + ≈48 000</span><span class="row-detail">English and Russian words in the two bundled dictionaries</span></div></div>
+              <div class="row"><div class="row-body"><span class="row-title mono">offline</span><span class="row-detail">everything runs on your Mac, with no network calls</span></div></div>
+              <div class="row"><div class="row-body"><span class="row-title mono">RukeyCore</span><span class="row-detail">one engine for the menu bar app and the CLI</span></div></div>
             </div>
           </div>
         </div>
@@ -142,14 +143,14 @@
       <div class="container">
         <div class="grid">
           <div class="col-full">
-            <span class="kicker">INSTALL</span>
+            <span class="group-label">INSTALL</span>
             <h2>Three steps</h2>
-            <ol class="steps">
-              <li><span class="step-n">01</span><h3>Download</h3><p><code>Rukey-*.dmg</code> from the <a href="https://github.com/RomaFka28/rukey/releases/latest">releases page</a>, open the disk image.</p></li>
-              <li><span class="step-n">02</span><h3>Drag to Applications</h3><p><strong>Rukey.app</strong> into the <strong>Applications</strong> folder.</p></li>
-              <li><span class="step-n">03</span><h3>Grant access</h3><p><strong>System Settings → Privacy &amp; Security → Accessibility</strong></p></li>
-            </ol>
-            <p class="note">Once running, Rukey lives in the menu bar — there is no Dock icon.</p>
+            <div class="group">
+              <div class="row"><span class="row-glyph">1</span><div class="row-body"><span class="row-title">Download</span><span class="row-detail"><code>Rukey-*.dmg</code> from the <a href="https://github.com/RomaFka28/rukey/releases/latest">releases page</a>, open the disk image.</span></div></div>
+              <div class="row"><span class="row-glyph">2</span><div class="row-body"><span class="row-title">Drag to Applications</span><span class="row-detail"><strong>Rukey.app</strong> into the <strong>Applications</strong> folder.</span></div></div>
+              <div class="row"><span class="row-glyph">3</span><div class="row-body"><span class="row-title">Grant access</span><span class="row-detail"><strong>System Settings → Privacy &amp; Security → Accessibility</strong></span></div></div>
+            </div>
+            <p class="group-foot">Once running, Rukey lives in the menu bar — there is no Dock icon.</p>
           </div>
         </div>
       </div>
@@ -159,25 +160,25 @@
       <div class="container">
         <div class="grid">
           <div class="col-8">
-            <span class="kicker">USAGE</span>
+            <span class="group-label">USAGE</span>
             <h2>Menu bar and CLI</h2>
             <h3>Menu bar</h3>
-            <p>In the menu bar Rukey shows its state and the current layout. The same menu opens Settings… and Log…, and Check for Updates… runs an update check through Sparkle.</p>
-            <p class="mono">Working · Paused: Secure Input · No Accessibility permission</p>
+            <p>In the menu bar Rukey shows its state and the current layout. The app is currently in Russian only, so the menu reads «Настройки…» (Settings), «Журнал…» (Log) and «Проверить обновления…» (Check for Updates), which runs an update check through Sparkle.</p>
+            <p class="mono">Работает (Working) · Приостановлено: защищённый ввод (Paused: Secure Input) · Нет прав Accessibility (No Accessibility permission)</p>
             <h3>CLI</h3>
-            <p>The <code>rukey</code> daemon is the same engine without a UI.</p>
-            <pre class="code-panel"><code>rukey
-rukey --check-permissions
-rukey --exclude-terminals
-rukey --exclude-bundle &lt;id&gt;
-rukey --test-conversion
-rukey --help</code></pre>
+            <p>The <code>rukey</code> daemon is the same engine without a UI. It is built from source and is not bundled in the .dmg — run it with <code>swift run rukey</code>.</p>
+            <pre class="code-panel"><code>swift run rukey
+swift run rukey --check-permissions
+swift run rukey --exclude-terminals
+swift run rukey --exclude-bundle &lt;id&gt;
+swift run rukey --test-conversion
+swift run rukey --help</code></pre>
             <h3>Configuration</h3>
-            <ul>
-              <li><code>~/.config/rukey/exclude.json</code> — exclusions and general settings</li>
-              <li><code>~/.config/rukey/custom.json</code> — user dictionary</li>
-              <li><code>~/.config/rukey/learned.json</code> — undo-learning data</li>
-            </ul>
+            <div class="group">
+              <div class="row"><div class="row-body"><span class="row-title mono">~/.config/rukey/exclude.json</span><span class="row-detail">exclusions and general settings</span></div></div>
+              <div class="row"><div class="row-body"><span class="row-title mono">~/.config/rukey/custom.json</span><span class="row-detail">user dictionary</span></div></div>
+              <div class="row"><div class="row-body"><span class="row-title mono">~/.config/rukey/learned.json</span><span class="row-detail">undo-learning data</span></div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -186,9 +187,10 @@ rukey --help</code></pre>
     <section class="section" id="faq">
       <div class="container">
         <div class="grid">
-          <div class="col-8 faq">
-            <span class="kicker">FAQ</span>
+          <div class="col-8">
+            <span class="group-label">FAQ</span>
             <h2>Common questions</h2>
+            <div class="group faq">
             <details>
               <summary>Does Rukey work offline?</summary>
               <p>Yes. Both dictionaries are bundled into the app, and all processing happens on your Mac. The internet is needed only for update checks.</p>
@@ -217,6 +219,7 @@ rukey --help</code></pre>
               <summary>Is it free?</summary>
               <p>Yes. Rukey is distributed under Apache-2.0, with the source open <a href="https://github.com/RomaFka28/rukey">on GitHub</a>.</p>
             </details>
+            </div>
           </div>
         </div>
       </div>
@@ -226,10 +229,12 @@ rukey --help</code></pre>
       <div class="container">
         <div class="grid">
           <div class="col-7">
-            <span class="kicker">CHANGES</span>
+            <span class="group-label">CHANGES</span>
             <h2>Version</h2>
-            <p><span class="version-badge" id="release">v1.0.3 · 2026-11-04</span></p>
-            <p>The current release. What changed is in the release notes on GitHub.</p>
+            <div class="group">
+              <div class="row"><span class="row-glyph"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H5a2 2 0 0 0-2 2v4.59a2 2 0 0 0 .59 1.41L13.17 20a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></span><div class="row-body"><span class="row-title mono" id="release">v1.0.3 · 2026-11-04</span><span class="row-detail">Current release</span></div></div>
+            </div>
+            <p class="group-foot">What changed is in the release notes on GitHub.</p>
             <p><a class="btn-ghost" href="https://github.com/RomaFka28/rukey/releases">All releases →</a></p>
           </div>
         </div>
