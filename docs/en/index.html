@@ -98,17 +98,11 @@
     <section class="section" id="problem">
       <div class="container">
         <div class="grid">
-          <div class="col-7">
+          <div class="col-full">
             <span class="group-label">PROBLEM</span>
             <h2>The word is there, the letters are not</h2>
-            <p>You type <code>ghbdtn</code>, and <code>ghbdtn</code> stays on the screen, though you meant «привет». Erase it, switch the layout, type it again — a small loss that repeats many times a day.</p>
+            <p class="lede">The keyboard stayed in one layout, and the screen shows the letters of another. Until you read the word twice, the mistake is invisible — it is just a run of unfamiliar symbols. Erase it, switch the layout, type it again — a small loss that repeats many times a day.</p>
             <p>Rukey catches it the moment you type: the word is already written, the layout is already wrong — and it gives you back what you meant to say.</p>
-          </div>
-          <div class="col-5 rail">
-            <div class="group" aria-hidden="true">
-              <span class="transform-row"><span class="wrong">ghbdtn</span><span class="t-arrow">→</span><span class="right">привет</span></span>
-              <span class="transform-row"><span class="wrong">руддщ</span><span class="t-arrow">→</span><span class="right">hello</span></span>
-            </div>
           </div>
         </div>
       </div>
@@ -120,7 +114,7 @@
           <div class="col-7">
             <span class="group-label">HOW IT WORKS</span>
             <h2>Two dictionaries and one check</h2>
-            <p>Inside the app are two dictionaries: ≈46 000 English and ≈48 000 Russian words. Every word is checked against them and against the flipped layout. A correction fires only when the original spelling is absent from the dictionary and the flipped one is present. So «привет» stays «привет», and <code>ghbdtn</code> becomes «привет».</p>
+            <p>Inside the app are two dictionaries: ≈46 000 English and ≈48 000 Russian words. Every word is checked against them and against the flipped layout. A correction fires only when the original spelling is absent from the dictionary and the flipped one is present. So a word that is already spelled correctly stays untouched, and the misspelled one becomes the word you meant.</p>
             <p>The dictionaries are bundled into the app: everything works offline, with no network calls.</p>
             <p>The menu bar app and the <code>rukey</code> daemon share one engine from <code>RukeyCore</code> — they behave identically.</p>
             <h3>One Option tap to undo</h3>

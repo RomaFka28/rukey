@@ -568,26 +568,4 @@ code, .mono {
   color: var(--text);
 }
 
-/* Problem section: "on the screen now" group */
-.transform-row {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  white-space: nowrap;
-  padding: 13px 18px;
-  font-family: var(--font-mono);
-  font-size: 1.05rem;
-}
-
-.transform-row + .transform-row {
-  border-top: 1px solid var(--group-sep);
-}
-
-.transform-row .wrong {
-  color: var(--secondary);
-  text-decoration: line-through;
-  text-decoration-color: var(--muted);
-}
-
-.transform-row .t-arrow { color: var(--accent); }
-.transform-row .right { color: var(--text); }
+/* CLI block */
